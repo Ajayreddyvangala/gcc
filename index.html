@@ -952,7 +952,7 @@ function renderAll(){
       <strong>Profile Match</strong> — Sorted by cybersecurity roles count. PING · Azure AD · GCP · Endpoint · IAM background gives you ★★★★★ fit at the top companies.
     </div>`;
   }
-  if(!sorted.length){main.innerHTML=html+`<div class="empty"><div class="ico">🔍</div><p>No GCCs match your filters.</p></div>`;return;}
+  if(!sorted.length){main.innerHTML=html+`<div class="empty"><div class="ico">🔍</div><p>No GCCs match your filters.</p></div>`;requestAnimationFrame(()=>observeCards());return;}
   const hasWithRoles=sorted.some(g=>(g.cyberRoles||[]).length>0);
   if(hasWithRoles&&currentTab!=='fav'&&currentTab!=='alerts'){
     html+=`<div class="sort-bar">
@@ -968,6 +968,7 @@ function renderAll(){
     : tableHTML(slice);
   html += paginationHTML(currentPage,total,sorted.length);
   main.innerHTML=html;
+  requestAnimationFrame(()=>observeCards());
 }
 
 function renderStatRow(f){
@@ -988,7 +989,7 @@ function cardHTML(g){
   const isCyber=g.cyber==='Yes', isNew=g.status&&(g.status.includes('New')||g.status.includes('Recent'));
   const roles=(g.cyberRoles||[]);
   const hasRoles=roles.length>0;
-  return `<div class="gcc-card${hasRoles?' has-roles':''}${isFav?' is-fav':''}${isAlt?' has-alert':''}" onclick="openModal(${g.id})">
+  return `<div class="gcc-card${hasRoles?' has-roles':''}${isFav?' is-fav':''}${isAlt?' has-alert':''}" data-id="${g.id}" onclick="openModal(${g.id})">
     <div class="card-header">
       <div class="card-logo" style="background:${s.logo}">${ini(g.name)}</div>
       <div class="card-actions-top">
@@ -1100,13 +1101,18 @@ function openModal(id){
     </div>
     <div class="info-field" style="margin-bottom:10px"><div class="info-lbl">Key Functions</div><div class="info-val" style="font-weight:400;font-size:13px;line-height:1.5">${g.functions}</div></div>
     ${g.tools?`<div class="info-field" style="margin-bottom:10px"><div class="info-lbl">Security Stack</div><div class="info-val" style="font-weight:400;font-size:13px;color:var(--gray-500)">${g.tools}</div></div>`:''}
-    ${roles.length?`<div class="section-title">Current Cybersecurity Openings <span class="section-sub">— click to open company's careers portal</span></div>${rolesHtml}`
-     :`<div style="background:var(--gray-50);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--gray-400);margin-top:10px">No cybersecurity openings listed currently — check the careers portal for updates.</div>`}
+    <div class="section-title">
+      Live Cybersecurity Openings
+      <span class="section-sub">— fetched from ${g.name} official careers portal</span>
+    </div>
+    <div id="modalLiveJobs" style="min-height:60px"></div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;gap:6px;flex-wrap:wrap">
       <a href="${g.careerUrl}" target="_blank" class="btn btn-primary" style="text-decoration:none">Open ${g.name} Careers →</a>
       <button class="btn ${signedIn()?'btn-outline':'btn-locked'}" onclick="dlGCC(${g.id})">${signedIn()?'⬇ Download Excel':'🔒 Sign up for Excel'}</button>
     </div>`;
   document.getElementById('modal').classList.add('open');
+  // inject live jobs after modal is visible
+  setTimeout(()=>injectLiveJobsInModal(g), 50);
 }
 function closeModal(e){if(e.target===document.getElementById('modal'))document.getElementById('modal').classList.remove('open');}
 
@@ -1319,5 +1325,259 @@ function openNewGCCSearch(){
   toast('Opening Google search for new GCCs…');
 }
 </script>
+
+<!-- ══ ADZUNA LIVE JOB INTEGRATION ══════════════════════════ -->
+<script>
+// ── CONFIG ────────────────────────────────────────────────────
+const AZ_ID   = 'ef3e0dae';
+const AZ_KEY  = '0a7e855de7f680dedbfff13bf6ad8cd9';
+const AZ_BASE = 'https://api.adzuna.com/v1/api/jobs/in/search/1';
+
+// 4 query sets — covers Information Security *, Cybersecurity,
+// IAM / Identity, and tool-stack roles across all seniority levels
+const AZ_QUERIES = [
+  {
+    what:    'information security',
+    what_or: 'manager senior engineer lead director architect analyst head specialist officer'
+  },
+  {
+    what:    'cybersecurity',
+    what_or: 'manager lead director head architect VP senior engineer analyst'
+  },
+  {
+    what:    'identity access',
+    what_or: 'manager lead director architect engineer senior analyst governance'
+  },
+  {
+    what:    'PING azure security GCP endpoint',
+    what_or: 'manager lead director senior engineer architect specialist'
+  },
+];
+
+// ── CACHE & OBSERVER ──────────────────────────────────────────
+const jobCache    = new Map();   // key: "CompanyName-CITY"
+const fetchingSet = new Set();   // prevent duplicate in-flight calls
+
+const cardObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    cardObserver.unobserve(entry.target);
+    const id = parseInt(entry.target.dataset.id);
+    if (!id) return;
+    const g = allData().find(x => x.id === id);
+    if (g) fetchJobsForCard(g, entry.target);
+  });
+}, { rootMargin: '300px 0px' });   // start loading 300px before card enters screen
+
+function observeCards() {
+  document.querySelectorAll('.gcc-card[data-id]').forEach(card => {
+    const id = card.dataset.id;
+    const g  = allData().find(x => x.id === parseInt(id));
+    if (!g) return;
+    const key = g.name + '-' + g.city;
+    if (jobCache.has(key)) {
+      // already fetched — update immediately without API call
+      updateCardDOM(card, jobCache.get(key), g);
+    } else {
+      // show loading state then observe
+      setCardLoading(card);
+      cardObserver.observe(card);
+    }
+  });
+}
+
+// ── FETCH JOBS ────────────────────────────────────────────────
+async function fetchJobsForCard(g, cardEl) {
+  const key = g.name + '-' + g.city;
+  if (fetchingSet.has(key)) return;
+  fetchingSet.add(key);
+
+  // Adzuna uses "Bangalore" not "Bengaluru"
+  const city    = g.city === 'HYD' ? 'Hyderabad' : 'Bangalore';
+  const company = cleanCompanyName(g.name);
+  const allJobs = [];
+  const seenIds = new Set();
+
+  for (const q of AZ_QUERIES) {
+    try {
+      const params = new URLSearchParams({
+        app_id:          AZ_ID,
+        app_key:         AZ_KEY,
+        what:            q.what,
+        what_or:         q.what_or,
+        where:           city,
+        company:         company,
+        results_per_page:'10',
+        sort_by:         'date',
+        category:        'it-jobs',
+      });
+      const res  = await fetch(`${AZ_BASE}?${params}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      (data.results || []).forEach(job => {
+        if (!seenIds.has(job.id)) {
+          seenIds.add(job.id);
+          allJobs.push({
+            id:       job.id,
+            title:    cleanTitle(job.title),
+            company:  job.company?.display_name || g.name,
+            location: job.location?.display_name || city,
+            created:  job.created,
+            url:      job.redirect_url,
+          });
+        }
+      });
+    } catch(e) {
+      // network error for this query — continue to next
+    }
+  }
+
+  // sort newest first
+  allJobs.sort((a, b) => new Date(b.created) - new Date(a.created));
+  jobCache.set(key, allJobs);
+  fetchingSet.delete(key);
+
+  // find card in DOM (might have re-rendered)
+  const liveCard = document.querySelector(`.gcc-card[data-id="${g.id}"]`);
+  if (liveCard) updateCardDOM(liveCard, allJobs, g);
+}
+
+// ── DOM UPDATES ───────────────────────────────────────────────
+function setCardLoading(cardEl) {
+  const rolesEl = cardEl.querySelector('.card-roles');
+  if (!rolesEl) return;
+  rolesEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray-400)">
+      <span style="width:8px;height:8px;border-radius:50%;border:2px solid var(--blue);
+        border-top-color:transparent;animation:spin .8s linear infinite;display:inline-block"></span>
+      Checking live openings…
+    </div>`;
+}
+
+function updateCardDOM(cardEl, jobs, g) {
+  const rolesEl = cardEl.querySelector('.card-roles');
+  if (!rolesEl) return;
+  const city  = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
+  const count = jobs.length;
+
+  if (count === 0) {
+    cardEl.classList.remove('has-roles');
+    cardEl.classList.add('no-roles');
+    rolesEl.innerHTML = `<div class="no-roles-chip">○ No current openings in ${city}</div>`;
+  } else {
+    cardEl.classList.add('has-roles');
+    cardEl.classList.remove('no-roles');
+    const shown = jobs.slice(0, 3);
+    rolesEl.innerHTML = `
+      <div class="card-roles-label" style="color:var(--teal);font-weight:600">
+        🟢 ${count} live opening${count !== 1 ? 's' : ''} in ${city}
+      </div>
+      ${shown.map(j => `
+        <a href="${j.url}" target="_blank" onclick="event.stopPropagation()"
+          class="role-pill" title="${j.title} — posted ${timeAgo(j.created)}">
+          ● ${j.title}
+        </a>`).join('')}
+      ${count > 3 ? `
+        <span class="role-pill"
+          style="cursor:default;background:var(--gray-100);color:var(--gray-500);border-color:var(--gray-200)">
+          +${count - 3} more
+        </span>` : ''}`;
+  }
+  cardEl.dataset.jobCount = count;
+}
+
+// Update modal with live jobs when opened
+function injectLiveJobsInModal(g) {
+  const key  = g.name + '-' + g.city;
+  const jobs = jobCache.get(key);
+  const city = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
+  const el   = document.getElementById('modalLiveJobs');
+  if (!el) return;
+
+  if (!jobs) {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-400);padding:10px 0">
+        <span style="width:10px;height:10px;border-radius:50%;border:2px solid var(--blue);
+          border-top-color:transparent;animation:spin .8s linear infinite;display:inline-block"></span>
+        Fetching live jobs from ${g.name} careers portal…
+      </div>`;
+    // kick off fetch then update modal
+    const tmpCard = { querySelector: () => null, classList: { add:()=>{}, remove:()=>{} }, dataset: {} };
+    fetchJobsForCard(g, tmpCard).then(() => injectLiveJobsInModal(g));
+    return;
+  }
+
+  if (jobs.length === 0) {
+    el.innerHTML = `
+      <div style="background:var(--gray-50);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--gray-400)">
+        No ${city} cybersecurity openings found right now across all 4 search queries.
+        <br><br>
+        <a href="${g.careerUrl}" target="_blank" style="color:var(--blue)">
+          Check ${g.name} careers page directly →
+        </a>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--teal)">
+      🟢 ${jobs.length} live opening${jobs.length!==1?'s':''} found in ${city}
+      <span style="font-weight:400;color:var(--gray-400);margin-left:6px">— from ${g.name} official careers portal</span>
+    </div>
+    ${jobs.map(j => `
+      <div style="border:1px solid var(--gray-200);border-radius:8px;padding:10px 14px;
+        margin-bottom:6px;transition:.15s" onmouseover="this.style.borderColor='var(--blue)'"
+        onmouseout="this.style.borderColor='var(--gray-200)'">
+        <div style="font-size:13px;font-weight:600;color:var(--gray-900);margin-bottom:3px">${j.title}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
+          ${j.company} · ${j.location} · ${timeAgo(j.created)}
+        </div>
+        <a href="${j.url}" target="_blank"
+          style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;
+            background:var(--blue);color:#fff;border-radius:6px;font-size:12px;
+            font-weight:600;text-decoration:none;transition:.15s"
+          onmouseover="this.style.background='var(--blue-dk)'"
+          onmouseout="this.style.background='var(--blue)'">
+          Apply at ${j.company} ↗
+        </a>
+      </div>`).join('')}`;
+}
+
+// ── HELPERS ───────────────────────────────────────────────────
+function cleanCompanyName(name) {
+  // Remove common suffixes that break Adzuna's company matching
+  return name
+    .replace(/\s*\/\s*Broadcom$/i, '')   // VMware / Broadcom → VMware
+    .replace(/\s*GCC$/i, '')             // T-Mobile GCC → T-Mobile
+    .replace(/\s*India$/i, '')
+    .replace(/\s*BPM$/i, '')
+    .replace(/\s*Global Tech$/i, '')
+    .replace(/[^a-zA-Z0-9 &]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanTitle(title) {
+  // Truncate very long titles for card display
+  return title.length > 52 ? title.slice(0, 49) + '…' : title;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const d    = Math.floor(diff / 86400000);
+  if (d === 0) return 'today';
+  if (d === 1) return 'yesterday';
+  if (d < 7)   return d + ' days ago';
+  if (d < 30)  return Math.floor(d/7) + ' weeks ago';
+  return Math.floor(d/30) + ' months ago';
+}
+
+// Spin animation for loading states
+const spinStyle = document.createElement('style');
+spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+document.head.appendChild(spinStyle);
+</script>
+
 </body>
 </html>
