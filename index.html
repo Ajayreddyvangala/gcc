@@ -514,6 +514,10 @@ nav{background:#fff;border-bottom:1px solid var(--gray-200);height:56px;
 </div>
 
 <!-- ══ TABS ════════════════════════════════════════════════════ -->
+<div style="background:#fff;border-bottom:1px solid var(--gray-200);
+  padding:7px 24px;font-size:12px;color:var(--gray-400);text-align:center">
+  <span id="lastUpdated">⟳ Loading live job data…</span>
+</div>
 <div class="tab-bar">
   <div class="tab-inner">
     <div class="tab active" onclick="switchTab('all',this)">All GCCs</div>
@@ -1326,258 +1330,250 @@ function openNewGCCSearch(){
 }
 </script>
 
-<!-- ══ ADZUNA LIVE JOB INTEGRATION ══════════════════════════ -->
+<!-- ══ SUPABASE LIVE JOB READER ════════════════════════════ -->
 <script>
 // ── CONFIG ────────────────────────────────────────────────────
-const AZ_ID   = 'ef3e0dae';
-const AZ_KEY  = '0a7e855de7f680dedbfff13bf6ad8cd9';
-const AZ_BASE = 'https://api.adzuna.com/v1/api/jobs/in/search/1';
+const SB_URL = 'https://ufoagnygfecqghfpjunx.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4';
 
-// 4 query sets — covers Information Security *, Cybersecurity,
-// IAM / Identity, and tool-stack roles across all seniority levels
-const AZ_QUERIES = [
-  {
-    what:    'information security',
-    what_or: 'manager senior engineer lead director architect analyst head specialist officer'
-  },
-  {
-    what:    'cybersecurity',
-    what_or: 'manager lead director head architect VP senior engineer analyst'
-  },
-  {
-    what:    'identity access',
-    what_or: 'manager lead director architect engineer senior analyst governance'
-  },
-  {
-    what:    'PING azure security GCP endpoint',
-    what_or: 'manager lead director senior engineer architect specialist'
-  },
-];
+// ── STATE ─────────────────────────────────────────────────────
+let jobsByGCC    = new Map();   // gcc_id → [jobs]
+let sbLoaded     = false;
+let lastFetchedAt= null;
 
-// ── CACHE & OBSERVER ──────────────────────────────────────────
-const jobCache    = new Map();   // key: "CompanyName-CITY"
-const fetchingSet = new Set();   // prevent duplicate in-flight calls
+// ── LOAD ON PAGE START ────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => loadJobsFromSupabase());
 
-const cardObserver = new IntersectionObserver(entries => {
-  entries.forEach(entry => {
-    if (!entry.isIntersecting) return;
-    cardObserver.unobserve(entry.target);
-    const id = parseInt(entry.target.dataset.id);
-    if (!id) return;
-    const g = allData().find(x => x.id === id);
-    if (g) fetchJobsForCard(g, entry.target);
-  });
-}, { rootMargin: '300px 0px' });   // start loading 300px before card enters screen
+async function loadJobsFromSupabase() {
+  try {
+    // 1. Load all active jobs in one single fetch
+    const res = await fetch(
+      `${SB_URL}/rest/v1/gcc_jobs?is_active=eq.true&select=id,gcc_id,company,city,title,location,url,posted_date&order=posted_date.desc`,
+      { headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` } }
+    );
+    if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+    const jobs = await res.json();
 
-function observeCards() {
-  document.querySelectorAll('.gcc-card[data-id]').forEach(card => {
-    const id = card.dataset.id;
-    const g  = allData().find(x => x.id === parseInt(id));
-    if (!g) return;
-    const key = g.name + '-' + g.city;
-    if (jobCache.has(key)) {
-      // already fetched — update immediately without API call
-      updateCardDOM(card, jobCache.get(key), g);
-    } else {
-      // show loading state then observe
-      setCardLoading(card);
-      cardObserver.observe(card);
+    // 2. Group by gcc_id
+    jobsByGCC = new Map();
+    allData().forEach(g => jobsByGCC.set(g.id, []));
+    jobs.forEach(job => {
+      const list = jobsByGCC.get(job.gcc_id);
+      if (list) list.push(job);
+    });
+
+    // 3. Load last fetch time
+    const stRes = await fetch(
+      `${SB_URL}/rest/v1/gcc_fetch_status?select=fetched_at,total_jobs,companies_with_jobs&order=fetched_at.desc&limit=1`,
+      { headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` } }
+    );
+    const stData = await stRes.json();
+    if (stData && stData[0]) {
+      lastFetchedAt = stData[0].fetched_at;
+      showLastUpdated(stData[0]);
     }
-  });
-}
 
-// ── FETCH JOBS ────────────────────────────────────────────────
-async function fetchJobsForCard(g, cardEl) {
-  const key = g.name + '-' + g.city;
-  if (fetchingSet.has(key)) return;
-  fetchingSet.add(key);
+    sbLoaded = true;
+    updateAllCards();
 
-  // Adzuna uses "Bangalore" not "Bengaluru"
-  const city    = g.city === 'HYD' ? 'Hyderabad' : 'Bangalore';
-  const company = cleanCompanyName(g.name);
-  const allJobs = [];
-  const seenIds = new Set();
-
-  for (const q of AZ_QUERIES) {
-    try {
-      const params = new URLSearchParams({
-        app_id:          AZ_ID,
-        app_key:         AZ_KEY,
-        what:            q.what,
-        what_or:         q.what_or,
-        where:           city,
-        company:         company,
-        results_per_page:'10',
-        sort_by:         'date',
-        category:        'it-jobs',
-      });
-      const res  = await fetch(`${AZ_BASE}?${params}`);
-      if (!res.ok) continue;
-      const data = await res.json();
-      (data.results || []).forEach(job => {
-        if (!seenIds.has(job.id)) {
-          seenIds.add(job.id);
-          allJobs.push({
-            id:       job.id,
-            title:    cleanTitle(job.title),
-            company:  job.company?.display_name || g.name,
-            location: job.location?.display_name || city,
-            created:  job.created,
-            url:      job.redirect_url,
-          });
-        }
-      });
-    } catch(e) {
-      // network error for this query — continue to next
-    }
+  } catch(e) {
+    console.warn('Supabase load failed:', e);
+    sbLoaded = true;   // stop spinner even on error
+    updateAllCards();
   }
-
-  // sort newest first
-  allJobs.sort((a, b) => new Date(b.created) - new Date(a.created));
-  jobCache.set(key, allJobs);
-  fetchingSet.delete(key);
-
-  // find card in DOM (might have re-rendered)
-  const liveCard = document.querySelector(`.gcc-card[data-id="${g.id}"]`);
-  if (liveCard) updateCardDOM(liveCard, allJobs, g);
 }
 
-// ── DOM UPDATES ───────────────────────────────────────────────
-function setCardLoading(cardEl) {
-  const rolesEl = cardEl.querySelector('.card-roles');
-  if (!rolesEl) return;
-  rolesEl.innerHTML = `
+function showLastUpdated(status) {
+  const el = document.getElementById('lastUpdated');
+  if (!el || !status) return;
+  const t = new Date(status.fetched_at);
+  el.innerHTML = `
+    <span style="color:var(--teal);font-weight:500">🟢 Live data</span>
+    &nbsp;·&nbsp; Updated ${timeAgo(status.fetched_at)}
+    &nbsp;·&nbsp; ${status.total_jobs || 0} jobs across ${status.companies_with_jobs || 0} companies`;
+}
+
+// ── CARD PAINTER ──────────────────────────────────────────────
+function observeCards() {
+  if (sbLoaded) {
+    updateAllCards();
+  } else {
+    document.querySelectorAll('.gcc-card[data-id]').forEach(setLoadingState);
+  }
+}
+
+function updateAllCards() {
+  document.querySelectorAll('.gcc-card[data-id]').forEach(card => {
+    const id = parseInt(card.dataset.id);
+    const g  = allData().find(x => x.id === id);
+    if (g) paintCard(card, g);
+  });
+}
+
+function setLoadingState(card) {
+  const el = card.querySelector('.card-roles');
+  if (!el) return;
+  el.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray-400)">
-      <span style="width:8px;height:8px;border-radius:50%;border:2px solid var(--blue);
-        border-top-color:transparent;animation:spin .8s linear infinite;display:inline-block"></span>
-      Checking live openings…
+      <span style="width:7px;height:7px;border-radius:50%;border:1.5px solid var(--blue);
+        border-top-color:transparent;animation:az-spin .7s linear infinite;
+        display:inline-block"></span>
+      Loading live jobs…
     </div>`;
 }
 
-function updateCardDOM(cardEl, jobs, g) {
-  const rolesEl = cardEl.querySelector('.card-roles');
-  if (!rolesEl) return;
-  const city  = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
-  const count = jobs.length;
+function paintCard(card, g) {
+  const el   = card.querySelector('.card-roles');
+  if (!el) return;
+  const jobs = jobsByGCC.get(g.id) || [];
+  const city = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
 
-  if (count === 0) {
-    cardEl.classList.remove('has-roles');
-    cardEl.classList.add('no-roles');
-    rolesEl.innerHTML = `<div class="no-roles-chip">○ No current openings in ${city}</div>`;
-  } else {
-    cardEl.classList.add('has-roles');
-    cardEl.classList.remove('no-roles');
-    const shown = jobs.slice(0, 3);
-    rolesEl.innerHTML = `
-      <div class="card-roles-label" style="color:var(--teal);font-weight:600">
-        🟢 ${count} live opening${count !== 1 ? 's' : ''} in ${city}
+  if (!sbLoaded) { setLoadingState(card); return; }
+
+  if (jobs.length === 0) {
+    card.classList.remove('has-roles');
+    card.classList.add('no-roles');
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:5px;
+        display:flex;align-items:center;gap:4px">
+        <span style="width:6px;height:6px;border-radius:50%;
+          background:#d1d5db;flex-shrink:0"></span>
+        No data feed in job index
       </div>
-      ${shown.map(j => `
+      <a href="${g.careerUrl}" target="_blank" onclick="event.stopPropagation()"
+        style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+          font-weight:500;color:var(--blue);text-decoration:none;padding:3px 0">
+        View openings on ${shortName(g.name)} careers ↗
+      </a>`;
+  } else {
+    card.classList.add('has-roles');
+    card.classList.remove('no-roles');
+    const show = jobs.slice(0, 3);
+    el.innerHTML = `
+      <div style="font-size:11px;font-weight:600;color:var(--teal);margin-bottom:4px">
+        🟢 ${jobs.length} live opening${jobs.length!==1?'s':''} in ${city}
+      </div>
+      ${show.map(j => `
         <a href="${j.url}" target="_blank" onclick="event.stopPropagation()"
-          class="role-pill" title="${j.title} — posted ${timeAgo(j.created)}">
-          ● ${j.title}
+          class="role-pill" title="Posted ${timeAgo(j.posted_date)}">
+          ● ${trimTitle(j.title)}
         </a>`).join('')}
-      ${count > 3 ? `
+      ${jobs.length > 3 ? `
         <span class="role-pill"
-          style="cursor:default;background:var(--gray-100);color:var(--gray-500);border-color:var(--gray-200)">
-          +${count - 3} more
+          style="cursor:default;background:var(--gray-100);
+            color:var(--gray-500);border-color:var(--gray-200)">
+          +${jobs.length-3} more
         </span>` : ''}`;
   }
-  cardEl.dataset.jobCount = count;
+  card.dataset.jobCount = jobs.length;
 }
 
-// Update modal with live jobs when opened
+// ── MODAL LIVE JOBS ───────────────────────────────────────────
 function injectLiveJobsInModal(g) {
-  const key  = g.name + '-' + g.city;
-  const jobs = jobCache.get(key);
-  const city = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
   const el   = document.getElementById('modalLiveJobs');
   if (!el) return;
+  const city = g.city === 'HYD' ? 'Hyderabad' : 'Bengaluru';
 
-  if (!jobs) {
+  if (!sbLoaded) {
     el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-400);padding:10px 0">
-        <span style="width:10px;height:10px;border-radius:50%;border:2px solid var(--blue);
-          border-top-color:transparent;animation:spin .8s linear infinite;display:inline-block"></span>
-        Fetching live jobs from ${g.name} careers portal…
+      <div style="display:flex;align-items:center;gap:8px;
+        font-size:12px;color:var(--gray-400);padding:12px 0">
+        <span style="width:10px;height:10px;border-radius:50%;
+          border:2px solid var(--blue);border-top-color:transparent;
+          animation:az-spin .7s linear infinite;display:inline-block"></span>
+        Loading live jobs…
       </div>`;
-    // kick off fetch then update modal
-    const tmpCard = { querySelector: () => null, classList: { add:()=>{}, remove:()=>{} }, dataset: {} };
-    fetchJobsForCard(g, tmpCard).then(() => injectLiveJobsInModal(g));
+    const t = setInterval(() => {
+      if (sbLoaded) { clearInterval(t); injectLiveJobsInModal(g); }
+    }, 300);
     return;
   }
 
+  const jobs = jobsByGCC.get(g.id) || [];
+
   if (jobs.length === 0) {
     el.innerHTML = `
-      <div style="background:var(--gray-50);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--gray-400)">
-        No ${city} cybersecurity openings found right now across all 4 search queries.
-        <br><br>
-        <a href="${g.careerUrl}" target="_blank" style="color:var(--blue)">
-          Check ${g.name} careers page directly →
-        </a>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);
+        border-radius:10px;padding:16px 18px">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="width:36px;height:36px;border-radius:8px;
+            background:#f3f4f6;display:flex;align-items:center;
+            justify-content:center;font-size:18px;flex-shrink:0">🔍</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--gray-900);
+              margin-bottom:4px">
+              No openings found in job index for ${city}
+            </div>
+            <div style="font-size:12px;color:var(--gray-500);
+              line-height:1.5;margin-bottom:12px">
+              ${g.name} may not publish to public job feeds.
+              Check their official careers portal directly for the latest openings.
+            </div>
+            <a href="${g.careerUrl}" target="_blank"
+              style="display:inline-flex;align-items:center;gap:6px;
+                padding:8px 16px;background:var(--blue);color:#fff;
+                border-radius:8px;font-size:13px;font-weight:600;
+                text-decoration:none">
+              No data feed — Navigate to ${shortName(g.name)} Careers ↗
+            </a>
+          </div>
+        </div>
       </div>`;
     return;
   }
 
   el.innerHTML = `
-    <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--teal)">
-      🟢 ${jobs.length} live opening${jobs.length!==1?'s':''} found in ${city}
-      <span style="font-weight:400;color:var(--gray-400);margin-left:6px">— from ${g.name} official careers portal</span>
+    <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:10px">
+      🟢 ${jobs.length} live opening${jobs.length!==1?'s':''} in ${city}
+      <span style="font-weight:400;color:var(--gray-400);margin-left:6px">
+        — fetched nightly from official career portals via JSearch
+      </span>
     </div>
     ${jobs.map(j => `
-      <div style="border:1px solid var(--gray-200);border-radius:8px;padding:10px 14px;
-        margin-bottom:6px;transition:.15s" onmouseover="this.style.borderColor='var(--blue)'"
+      <div style="border:1px solid var(--gray-200);border-radius:8px;
+        padding:11px 14px;margin-bottom:7px;transition:.15s"
+        onmouseover="this.style.borderColor='#2563eb'"
         onmouseout="this.style.borderColor='var(--gray-200)'">
-        <div style="font-size:13px;font-weight:600;color:var(--gray-900);margin-bottom:3px">${j.title}</div>
-        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
-          ${j.company} · ${j.location} · ${timeAgo(j.created)}
+        <div style="font-size:13px;font-weight:600;color:var(--gray-900);
+          margin-bottom:3px;line-height:1.3">${j.title}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:9px">
+          ${j.company} &nbsp;·&nbsp; ${j.location}
+          &nbsp;·&nbsp; ${timeAgo(j.posted_date)}
         </div>
         <a href="${j.url}" target="_blank"
-          style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;
-            background:var(--blue);color:#fff;border-radius:6px;font-size:12px;
-            font-weight:600;text-decoration:none;transition:.15s"
-          onmouseover="this.style.background='var(--blue-dk)'"
-          onmouseout="this.style.background='var(--blue)'">
-          Apply at ${j.company} ↗
+          style="display:inline-flex;align-items:center;gap:5px;
+            padding:6px 13px;background:var(--blue);color:#fff;
+            border-radius:6px;font-size:12px;font-weight:600;
+            text-decoration:none">
+          Apply now ↗
         </a>
-      </div>`).join('')}`;
+      </div>`).join('')}
+    <div style="margin-top:10px;padding-top:10px;
+      border-top:1px solid var(--gray-100)">
+      <a href="${g.careerUrl}" target="_blank"
+        style="font-size:12px;color:var(--gray-400);text-decoration:none">
+        Also check ${shortName(g.name)} official careers page →
+      </a>
+    </div>`;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
-function cleanCompanyName(name) {
-  // Remove common suffixes that break Adzuna's company matching
-  return name
-    .replace(/\s*\/\s*Broadcom$/i, '')   // VMware / Broadcom → VMware
-    .replace(/\s*GCC$/i, '')             // T-Mobile GCC → T-Mobile
-    .replace(/\s*India$/i, '')
-    .replace(/\s*BPM$/i, '')
-    .replace(/\s*Global Tech$/i, '')
-    .replace(/[^a-zA-Z0-9 &]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function trimTitle(t)  { return t&&t.length>50 ? t.slice(0,47)+'…' : (t||''); }
+function shortName(n)  { return n.replace(/\s*(\/.*|GCC|BPM|Global Tech)$/i,'').trim(); }
+function timeAgo(d) {
+  if (!d) return '';
+  const days = Math.floor((Date.now()-new Date(d).getTime())/86400000);
+  if (days===0) return 'today';
+  if (days===1) return 'yesterday';
+  if (days<7)   return days+'d ago';
+  if (days<30)  return Math.floor(days/7)+'w ago';
+  return Math.floor(days/30)+'mo ago';
 }
-
-function cleanTitle(title) {
-  // Truncate very long titles for card display
-  return title.length > 52 ? title.slice(0, 49) + '…' : title;
-}
-
-function timeAgo(dateStr) {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const d    = Math.floor(diff / 86400000);
-  if (d === 0) return 'today';
-  if (d === 1) return 'yesterday';
-  if (d < 7)   return d + ' days ago';
-  if (d < 30)  return Math.floor(d/7) + ' weeks ago';
-  return Math.floor(d/30) + ' months ago';
-}
-
-// Spin animation for loading states
-const spinStyle = document.createElement('style');
-spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-document.head.appendChild(spinStyle);
+const _s=document.createElement('style');
+_s.textContent='@keyframes az-spin{to{transform:rotate(360deg)}}';
+document.head.appendChild(_s);
 </script>
+
 
 </body>
 </html>
