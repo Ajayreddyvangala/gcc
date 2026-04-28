@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hyderabad GCC Intelligence Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --ink: #0a0f1e;
+  --ink2: #1e2540;
+  --mid: #5a6380;
+  --soft: #9aa3bf;
+  --line: #e2e5ef;
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --accent: #1646f0;
+  --accent2: #00c4a7;
+  --warn: #f0762d;
+  --red: #e53e3e;
+  --gold: #f5c518;
+  --it-c: #1646f0; --it-bg: #eef2ff;
+  --bfsi-c: #059669; --bfsi-bg: #ecfdf5;
+  --ph-c: #7c3aed; --ph-bg: #f5f3ff;
+  --hc-c: #0891b2; --hc-bg: #ecfeff;
+  --mfg-c: #d97706; --mfg-bg: #fffbeb;
+  --rt-c: #db2777; --rt-bg: #fdf2f8;
+  --cs-c: #374151; --cs-bg: #f9fafb;
+  --en-c: #16a34a; --en-bg: #f0fdf4;
+  --ins-c: #1d4ed8; --ins-bg: #eff6ff;
+  --med-c: #9333ea; --med-bg: #faf5ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+/* NAV */
+nav{background:var(--ink);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;border-bottom:2px solid var(--accent)}
+.nav-logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.1rem;color:#fff;letter-spacing:-0.5px}
+.nav-logo span{color:var(--accent2)}
+.nav-meta{font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--soft);display:flex;gap:1.5rem;align-items:center}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);display:inline-block;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* HERO */
+.hero{background:var(--ink2);padding:3rem 2rem 2.5rem;border-bottom:1px solid rgba(255,255,255,0.06)}
+.hero-inner{max-width:1300px;margin:0 auto}
+.hero h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(1.8rem,3vw,2.8rem);color:#fff;line-height:1.1;letter-spacing:-1px;margin-bottom:.6rem}
+.hero h1 em{font-style:normal;color:var(--accent2)}
+.hero p{color:var(--soft);font-size:.95rem;max-width:600px;line-height:1.6;margin-bottom:1.5rem}
+.hero-stats{display:flex;gap:2rem;flex-wrap:wrap}
+.hstat{display:flex;flex-direction:column}
+.hstat .n{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:700;color:#fff;line-height:1}
+.hstat .l{font-size:.72rem;color:var(--soft);text-transform:uppercase;letter-spacing:.08em;margin-top:.2rem}
+
+/* CONTROLS */
+.ctrl-bar{background:#fff;border-bottom:1px solid var(--line);padding:1rem 2rem;position:sticky;top:60px;z-index:90}
+.ctrl-inner{max-width:1300px;margin:0 auto;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center}
+.search-wrap{position:relative;flex:1;min-width:220px;max-width:360px}
+.search-wrap input{width:100%;padding:.55rem .9rem .55rem 2.4rem;border:1.5px solid var(--line);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.88rem;color:var(--ink);background:#f9fafb;outline:none;transition:.2s}
+.search-wrap input:focus{border-color:var(--accent);background:#fff}
+.search-icon{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--soft);font-size:.85rem}
+select{padding:.55rem .9rem;border:1.5px solid var(--line);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.85rem;color:var(--ink);background:#f9fafb;outline:none;cursor:pointer;transition:.2s}
+select:focus{border-color:var(--accent)}
+.btn{padding:.55rem 1.1rem;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;border:none;transition:.15s;display:inline-flex;align-items:center;gap:.4rem}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#1238d0}
+.btn-outline{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-green{background:var(--accent2);color:#fff}
+.btn-green:hover{background:#00a98e}
+.btn-warn{background:var(--warn);color:#fff}
+.btn-sm{padding:.35rem .7rem;font-size:.78rem}
+.ctrl-right{margin-left:auto;display:flex;gap:.5rem;align-items:center}
+
+/* TABS */
+.tab-bar{background:#fff;border-bottom:1px solid var(--line);padding:0 2rem}
+.tab-inner{max-width:1300px;margin:0 auto;display:flex;gap:0}
+.tab{padding:.8rem 1.3rem;font-family:'DM Sans',sans-serif;font-size:.85rem;font-weight:500;color:var(--mid);border-bottom:2.5px solid transparent;cursor:pointer;transition:.2s;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* MAIN */
+.main{max-width:1300px;margin:0 auto;padding:1.5rem 2rem}
+
+/* GRID MODE */
+.gcc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem}
+.gcc-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.25rem;cursor:pointer;transition:.2s;position:relative;overflow:hidden}
+.gcc-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);opacity:0;transition:.2s}
+.gcc-card:hover{border-color:var(--accent);box-shadow:0 4px 20px rgba(22,70,240,.1);transform:translateY(-1px)}
+.gcc-card:hover::before{opacity:1}
+.gcc-card.cyber-match{border-color:#dcfce7}
+.gcc-card.cyber-match::before{background:var(--accent2);opacity:1}
+.card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.75rem}
+.card-logo{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;color:#fff;flex-shrink:0}
+.card-badges{display:flex;gap:.3rem;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end}
+.badge{display:inline-block;padding:.18rem .55rem;border-radius:20px;font-size:.72rem;font-weight:500;letter-spacing:.01em}
+.badge-cyber{background:#dcfce7;color:#166534}
+.badge-new{background:#fef3c7;color:#92400e}
+.badge-est{background:#f1f5f9;color:#475569}
+.card-name{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--ink);margin-bottom:.2rem;line-height:1.2}
+.card-meta{font-size:.8rem;color:var(--mid);display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.75rem}
+.card-meta span{display:flex;align-items:center;gap:.25rem}
+.card-sector{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .6rem;border-radius:5px;font-size:.75rem;font-weight:500;margin-bottom:.6rem}
+.card-fns{font-size:.8rem;color:var(--mid);line-height:1.5;margin-bottom:.75rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-actions{display:flex;gap:.4rem;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--line)}
+
+/* TABLE MODE */
+.gcc-table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.gcc-table{width:100%;border-collapse:collapse;font-size:.83rem}
+.gcc-table th{background:var(--ink);color:#fff;padding:.7rem 1rem;text-align:left;font-family:'Syne',sans-serif;font-weight:600;font-size:.78rem;white-space:nowrap;cursor:pointer;user-select:none}
+.gcc-table th:hover{background:var(--ink2)}
+.gcc-table td{padding:.65rem 1rem;border-bottom:1px solid var(--line);vertical-align:middle}
+.gcc-table tr:hover td{background:#f8f9ff}
+.gcc-table tr:last-child td{border-bottom:none}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,15,30,.6);z-index:200;backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:16px;max-width:780px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-head{padding:1.5rem 1.75rem 1.25rem;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;position:sticky;top:0;background:#fff;z-index:2}
+.modal-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1.3rem;color:var(--ink)}
+.modal-close{font-size:1.3rem;cursor:pointer;color:var(--mid);background:none;border:none;padding:.25rem;line-height:1}
+.modal-body{padding:1.5rem 1.75rem}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1.25rem}
+.mfield{background:var(--bg);border-radius:8px;padding:.7rem .9rem}
+.mfield .lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--soft);margin-bottom:.2rem;font-weight:500}
+.mfield .val{font-size:.9rem;color:var(--ink);font-weight:500}
+.jobs-section{margin-top:1.25rem}
+.jobs-section h3{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;color:var(--ink);margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
+.job-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .75rem;background:var(--bg);border:1px solid var(--line);border-radius:6px;font-size:.8rem;color:var(--ink);margin:.2rem;cursor:pointer;transition:.15s}
+.job-chip:hover{border-color:var(--accent);color:var(--accent);background:#eef2ff}
+.job-chip .dot{width:5px;height:5px;border-radius:50%;background:var(--accent2)}
+.match-score{display:flex;gap:.2rem;font-size:1rem}
+
+/* STATS BAR */
+.stats-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;margin-bottom:1.5rem}
+.stat-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:.9rem 1rem;text-align:center}
+.stat-card .num{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:800;color:var(--ink)}
+.stat-card .lbl{font-size:.75rem;color:var(--mid);margin-top:.2rem}
+.stat-card.accent-card{background:var(--accent);border-color:var(--accent)}
+.stat-card.accent-card .num,.stat-card.accent-card .lbl{color:#fff}
+
+/* REFRESH SECTION */
+.refresh-section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.refresh-info{display:flex;flex-direction:column;gap:.2rem}
+.refresh-info h3{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;color:var(--ink)}
+.refresh-info p{font-size:.82rem;color:var(--mid)}
+.refresh-status{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--soft);display:flex;align-items:center;gap:.4rem}
+
+/* PAGINATION */
+.pagination{display:flex;align-items:center;justify-content:space-between;margin-top:1.25rem;padding:.75rem 0;flex-wrap:wrap;gap:.5rem}
+.page-info{font-size:.83rem;color:var(--mid)}
+.page-btns{display:flex;gap:.35rem}
+.page-btn{padding:.4rem .75rem;border:1.5px solid var(--line);border-radius:6px;background:#fff;font-size:.8rem;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--ink);transition:.15s}
+.page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.page-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.page-btn:disabled{opacity:.4;cursor:default}
+
+/* SECTOR PILLS */
+.sector-filter{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
+.sector-pill{padding:.3rem .8rem;border-radius:20px;font-size:.78rem;font-weight:500;cursor:pointer;border:1.5px solid transparent;transition:.15s}
+.sector-pill:hover,.sector-pill.active{border-color:currentColor}
+
+/* EMPTY */
+.empty{text-align:center;padding:4rem 2rem;color:var(--mid)}
+.empty .ico{font-size:3rem;margin-bottom:.75rem}
+.empty p{font-size:.9rem}
+
+/* LOADING */
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* UPLOAD PANEL */
+.upload-panel{background:#fff;border:2px dashed var(--line);border-radius:12px;padding:2rem;text-align:center;margin-bottom:1.25rem;transition:.2s}
+.upload-panel:hover{border-color:var(--accent)}
+.upload-panel input[type=file]{display:none}
+.upload-panel label{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:.75rem}
+.upload-icon{width:52px;height:52px;border-radius:12px;background:var(--it-bg);display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+
+/* TOAST */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--ink);color:#fff;padding:.75rem 1.25rem;border-radius:10px;font-size:.85rem;z-index:999;transform:translateY(100px);opacity:0;transition:.3s;max-width:300px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:#166534}
+.toast.error{background:#991b1b}
+
+@media(max-width:640px){
+  .gcc-grid{grid-template-columns:1fr}
+  .modal-grid{grid-template-columns:1fr}
+  .ctrl-inner{flex-direction:column;align-items:stretch}
+  .search-wrap{max-width:100%}
+  .ctrl-right{margin-left:0}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">HYD <span>GCC</span> HUB</div>
+  <div class="nav-meta">
+    <span><span class="live-dot"></span> Live Data</span>
+    <span id="navCount">— GCCs Tracked</span>
+    <span id="navDate"></span>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-inner">
+    <h1>Hyderabad <em>GCC Intelligence</em><br>Hub 2026</h1>
+    <p>Complete directory of Global Capability Centers in Hyderabad — searchable, filterable, and downloadable. Built for Information Security professionals targeting GCC opportunities.</p>
+    <div class="hero-stats">
+      <div class="hstat"><span class="n" id="totalCount">—</span><span class="l">GCCs Listed</span></div>
+      <div class="hstat"><span class="n" id="cyberCount">—</span><span class="l">Cybersec Hiring</span></div>
+      <div class="hstat"><span class="n" id="newCount">—</span><span class="l">New 2024–26</span></div>
+      <div class="hstat"><span class="n">10+</span><span class="l">Sectors</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <div class="tab-inner">
+    <div class="tab active" onclick="switchTab('directory',this)">All GCCs</div>
+    <div class="tab" onclick="switchTab('cyber',this)">Cybersecurity Jobs</div>
+    <div class="tab" onclick="switchTab('new',this)">New & Upcoming</div>
+    <div class="tab" onclick="switchTab('upload',this)">Upload / Import</div>
+  </div>
+</div>
+
+<!-- CONTROLS -->
+<div class="ctrl-bar">
+  <div class="ctrl-inner">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="searchBox" placeholder="Search company, role, location…" oninput="renderAll()">
+    </div>
+    <select id="sectorSel" onchange="renderAll()">
+      <option value="">All Sectors</option>
+    </select>
+    <select id="areaSel" onchange="renderAll()">
+      <option value="">All Areas</option>
+    </select>
+    <select id="statusSel" onchange="renderAll()">
+      <option value="">All Status</option>
+      <option value="Established">Established</option>
+      <option value="New">New (2024–26)</option>
+      <option value="Recent">Recent</option>
+    </select>
+    <select id="cyberSel" onchange="renderAll()">
+      <option value="">Cybersec: All</option>
+      <option value="Yes">Cybersec Hiring Only</option>
+    </select>
+    <div class="ctrl-right">
+      <button class="btn btn-outline btn-sm" onclick="toggleView()">⊞ Toggle View</button>
+      <button class="btn btn-green btn-sm" onclick="downloadAllExcel()">⬇ Download All Excel</button>
+      <button class="btn btn-warn btn-sm" id="refreshBtn" onclick="refreshGCCs()">↻ Check New GCCs</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="mainContent">
+  <!-- Content rendered by JS -->
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal" id="modalBox">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="mTitle">Company</div>
+        <div class="card-meta" style="margin-top:.3rem" id="mMeta"></div>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('modal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════════════════
+const GCC_DATA = [
+  {id:1,name:"Microsoft",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Software / Cloud",functions:"R&D, Cloud, AI, Cybersecurity, Product Engineering",headcount:"15000+",year:"1998",url:"https://careers.microsoft.com",status:"Established",cyber:"Yes",cyberRoles:["Security Engineer - IAM","Cloud Security Architect","Threat Intelligence Analyst","Azure Security Manager","Identity Security Lead"],tools:"PING, Azure AD, GCP, Defender, Sentinel, Intune",matchScore:5},
+  {id:2,name:"Google",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Internet / AI",functions:"Product Dev, Engineering, AI, Cloud Infrastructure",headcount:"5000+",year:"2004",url:"https://careers.google.com",status:"Established",cyber:"Yes",cyberRoles:["Information Security Engineer","GCP Security Specialist","Security Program Manager","Trust & Safety Lead"],tools:"GCP, BeyondCorp, Chronicle SIEM, Workspace Security",matchScore:5},
+  {id:3,name:"Amazon / AWS",sector:"IT / Technology",area:"Nanakramguda",hq:"USA",industry:"E-Commerce / Cloud",functions:"AWS Dev, Analytics, ML, Global Operations",headcount:"10000+",year:"2004",url:"https://www.amazon.jobs",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Engineer","IAM Solutions Architect","Security Manager - AWS","Endpoint Security Lead"],tools:"AWS IAM, Azure, GCP, GuardDuty, Security Hub",matchScore:5},
+  {id:4,name:"JP Morgan Chase",sector:"BFSI",area:"Financial District",hq:"USA",industry:"Banking",functions:"Risk Analytics, Data Engineering, Cybersecurity, Tech",headcount:"7000+",year:"2004",url:"https://careers.jpmorgan.com",status:"Established",cyber:"Yes",cyberRoles:["IAM Manager","PAM Engineer","Cyber Threat Analyst","Endpoint Security Lead","SOC Manager"],tools:"CyberArk, PING, Azure AD, CrowdStrike, Splunk",matchScore:5},
+  {id:5,name:"HSBC",sector:"BFSI",area:"HITEC City",hq:"UK",industry:"Banking",functions:"Finance Ops, Compliance, Cloud Security, Risk",headcount:"4000+",year:"2002",url:"https://mycareer.hsbc.com",status:"Established",cyber:"Yes",cyberRoles:["Information Security Manager","Cloud Security Analyst","Cyber Risk Lead","Identity & Access Manager"],tools:"PING, Azure AD, Palo Alto, Splunk, SIEM",matchScore:5},
+  {id:6,name:"Goldman Sachs",sector:"BFSI",area:"Financial District",hq:"USA",industry:"Investment Banking",functions:"Finance Engineering, Risk, Security, Client Ops",headcount:"3000+",year:"2021",url:"https://goldmansachs.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cyber Threat Intelligence","IAM Security Engineer","SIEM Lead","Security Architect"],tools:"Azure AD, GCP, QRadar, IAM Platforms",matchScore:4},
+  {id:7,name:"Ping Identity",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"IAM / Security",functions:"PingID, PingFederate, PingAccess, Cloud IAM",headcount:"500+",year:"2018",url:"https://pingidentity.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Security Engineer - IAM","IAM Architect","PingFederate Admin","Product Security Engineer"],tools:"PingID, PingFederate, PingAccess, Azure AD, OAuth",matchScore:5},
+  {id:8,name:"Wells Fargo",sector:"BFSI",area:"Gachibowli",hq:"USA",industry:"Banking",functions:"Tech, Analytics, Risk, IAM, Cybersecurity",headcount:"5000+",year:"2008",url:"https://wellsfargojobs.com",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Manager","IAM Lead","Endpoint Security Engineer","SOC Analyst Lead"],tools:"Azure AD, PING, CrowdStrike, Splunk, CyberArk",matchScore:5},
+  {id:9,name:"Salesforce",sector:"IT / Technology",area:"Madhapur",hq:"USA",industry:"CRM / SaaS",functions:"CRM Dev, Automation, Analytics, Product Engineering",headcount:"2000+",year:"2010",url:"https://careers.salesforce.com",status:"Established",cyber:"Yes",cyberRoles:["Security Architect","AppSec Engineer","Zero Trust Security Lead","Cloud Security Analyst"],tools:"Azure, GCP, Salesforce Shield, Zero Trust",matchScore:4},
+  {id:10,name:"IBM",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"IT Services",functions:"Security, AI, Cloud, Consulting, QRadar",headcount:"5000+",year:"2000",url:"https://ibm.com/employment",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Architect","QRadar Engineer","X-Force Threat Analyst","Cloud Security Manager"],tools:"QRadar, Azure, GCP, Watson Security, SIEM",matchScore:4},
+  {id:11,name:"Oracle",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Enterprise Software",functions:"Cloud ERP, Database, Cloud Security, Analytics",headcount:"4000+",year:"2003",url:"https://oracle.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Engineer","Identity Management Dev","Security Ops Analyst"],tools:"Oracle Cloud, Azure, IAM, CASB",matchScore:3},
+  {id:12,name:"ServiceNow",sector:"IT / Technology",area:"Madhapur",hq:"USA",industry:"IT Workflow / SaaS",functions:"Platform Engineering, Support, DevOps, Security",headcount:"2000+",year:"2014",url:"https://careers.servicenow.com",status:"Established",cyber:"Yes",cyberRoles:["Platform Security Engineer","SecOps Analyst","Cloud Security Specialist"],tools:"ServiceNow SecOps, Azure, GCP",matchScore:3},
+  {id:13,name:"Qualcomm",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Semiconductors",functions:"R&D, Chip Design, AI, Embedded Security",headcount:"3000+",year:"2002",url:"https://careers.qualcomm.com",status:"Established",cyber:"Yes",cyberRoles:["Embedded Security Engineer","Product Security Analyst","Firmware Security Lead"],tools:"Embedded Security, Hardware Security Modules",matchScore:3},
+  {id:14,name:"Micron Technology",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Semiconductors",functions:"Design, Verification, IT Security",headcount:"2000+",year:"2015",url:"https://micron.com/careers",status:"Established",cyber:"Yes",cyberRoles:["IT Security Analyst","Cloud Security Engineer","Endpoint Security Specialist"],tools:"Azure, Endpoint Security, SIEM",matchScore:3},
+  {id:15,name:"Palo Alto Networks",sector:"IT / Technology",area:"Financial District",hq:"USA",industry:"Cybersecurity",functions:"Product Engineering, Threat Intelligence, SOC",headcount:"500+",year:"2022",url:"https://paloaltonetworks.com/careers",status:"Recent",cyber:"Yes",cyberRoles:["Product Security Engineer","Threat Intelligence Analyst","SOC Lead","Cloud Security Engineer - Prisma"],tools:"NGFW, Prisma Cloud, Cortex XDR, XSOAR",matchScore:4},
+  {id:16,name:"CrowdStrike",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Cybersecurity",functions:"EDR, Cloud Security, AI Threat Detection",headcount:"500+",year:"2022",url:"https://crowdstrike.com/careers",status:"Recent",cyber:"Yes",cyberRoles:["Cloud Security Engineer","Detection Engineer","Threat Intel Analyst","EDR Specialist"],tools:"Falcon EDR, XDR, Azure, GCP, Threat Graph",matchScore:4},
+  {id:17,name:"SailPoint",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"IAM / IGA",functions:"Identity Governance, Cloud IAM, Lifecycle Mgmt",headcount:"300+",year:"2020",url:"https://sailpoint.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Identity Governance Engineer","IGA Admin","IAM Security Analyst","Access Certification Lead"],tools:"SailPoint IIQ, Azure AD, LDAP, SCIM, PING",matchScore:5},
+  {id:18,name:"BeyondTrust",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"PAM / Security",functions:"Privileged Access, Endpoint Security, Zero Trust",headcount:"300+",year:"2021",url:"https://beyondtrust.com/careers",status:"Established",cyber:"Yes",cyberRoles:["PAM Specialist","Privileged Access Engineer","Security Operations Analyst","Product Security Lead"],tools:"BeyondTrust PAM, Azure AD, LDAP, Active Directory",matchScore:5},
+  {id:19,name:"Cisco",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Networking / Security",functions:"Network Security, Cloud, IoT, Threat Research",headcount:"2500+",year:"2004",url:"https://jobs.cisco.com",status:"Established",cyber:"Yes",cyberRoles:["Security Architect","Network Security Engineer","Threat Researcher","ISE Engineer"],tools:"Cisco SecOps, ISE, DNAC, Umbrella, Duo",matchScore:4},
+  {id:20,name:"Fortinet",sector:"IT / Technology",area:"Madhapur",hq:"USA",industry:"Network Security",functions:"Security Products, SOC, Cloud Security",headcount:"300+",year:"2019",url:"https://fortinet.com/corporate/careers",status:"Established",cyber:"Yes",cyberRoles:["Network Security Engineer","SOC Analyst","FortiGate Specialist","Cloud Security Engineer"],tools:"FortiGate, FortiSIEM, FortiAnalyzer, Azure",matchScore:3},
+  {id:21,name:"Secureworks",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Managed Security",functions:"SOC, Threat Intelligence, MDR, SIEM",headcount:"300+",year:"2021",url:"https://secureworks.com/careers",status:"Established",cyber:"Yes",cyberRoles:["SOC Analyst","Threat Intel Analyst","MDR Engineer","Detection Engineer"],tools:"Taegis XDR, SIEM, Threat Intel Platforms",matchScore:4},
+  {id:22,name:"NICE Systems",sector:"IT / Technology",area:"Gachibowli",hq:"Israel",industry:"Analytics / Security",functions:"Cloud, Analytics, Compliance, SecOps",headcount:"1500+",year:"2005",url:"https://nice.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Analyst","Security Operations Engineer","Compliance Analyst"],tools:"Azure, NICE Cloud, Analytics Platforms",matchScore:3},
+  {id:23,name:"SAP",sector:"IT / Technology",area:"Gachibowli",hq:"Germany",industry:"Enterprise Software",functions:"ERP, Cloud, Analytics, Security",headcount:"3000+",year:"2001",url:"https://sap.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Engineer","SAP Security Consultant","Identity & Access Analyst"],tools:"SAP GRC, Azure, Cloud IAM, SIEM",matchScore:3},
+  {id:24,name:"Adobe",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Creative / SaaS",functions:"Engineering, AI, Product Development",headcount:"2000+",year:"2015",url:"https://adobe.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Engineer","AppSec Engineer","Security Analyst"],tools:"Azure, GCP, Prisma Cloud, CSPM",matchScore:3},
+  {id:25,name:"VMware / Broadcom",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Virtualization / IT",functions:"Cloud, Security, DevOps, Virtualization",headcount:"2000+",year:"2005",url:"https://careers.broadcom.com",status:"Established",cyber:"Yes",cyberRoles:["Cloud Security Engineer","DevSecOps Lead","NSX Security Specialist"],tools:"VMware NSX, Azure, vSphere Security",matchScore:3},
+  {id:26,name:"Nvidia",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"GPU / AI",functions:"AI, Chip Design, Cloud, Deep Learning",headcount:"1500+",year:"2018",url:"https://nvidia.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Product Security Engineer","Cloud Security Analyst","AI Security Researcher"],tools:"Azure, GCP, Security Frameworks, GPU Security",matchScore:3},
+  {id:27,name:"Capgemini",sector:"IT / Technology",area:"Madhapur",hq:"France",industry:"IT Services",functions:"Consulting, Cloud, Cybersecurity, Digital Transformation",headcount:"5000+",year:"2001",url:"https://capgemini.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Consultant","SOC Lead","Endpoint Security Specialist","IAM Analyst"],tools:"Azure, GCP, PING, CrowdStrike, Splunk",matchScore:4},
+  {id:28,name:"Infosys BPM",sector:"IT / Technology",area:"Gachibowli",hq:"India",industry:"IT Services",functions:"BPO, Digital Transformation, Analytics, Security",headcount:"8000+",year:"1999",url:"https://career.infosys.com",status:"Established",cyber:"Yes",cyberRoles:["Information Security Manager","ISMS Lead","ISO 27001 Analyst","Compliance Lead"],tools:"Azure, Endpoint Security, GRC Tools, SIEM",matchScore:4},
+  {id:29,name:"Wipro",sector:"IT / Technology",area:"HITEC City",hq:"India",industry:"IT Services",functions:"Engineering, Cloud, Security, Analytics",headcount:"6000+",year:"1990",url:"https://careers.wipro.com",status:"Established",cyber:"Yes",cyberRoles:["Cyber Defense Manager","IAM Lead - Azure AD","Security Operations Manager"],tools:"Azure AD, PING, CrowdStrike, SIEM, Splunk",matchScore:4},
+  {id:30,name:"HCL Technologies",sector:"IT / Technology",area:"Madhapur",hq:"India",industry:"IT Services",functions:"Engineering, Cybersecurity, AI, Product Dev",headcount:"4000+",year:"2001",url:"https://hcltech.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Security Architect","GRC Manager","Cloud Security Engineer"],tools:"Azure, GCP, GRC Frameworks, IAM",matchScore:3},
+  {id:31,name:"Cognizant",sector:"IT / Technology",area:"Nanakramguda",hq:"USA",industry:"IT Services",functions:"Cloud, Security, Analytics, Engineering",headcount:"5000+",year:"2000",url:"https://careers.cognizant.com",status:"Established",cyber:"Yes",cyberRoles:["Cloud & Endpoint Security Lead","Cyber Risk Analyst","IAM Specialist"],tools:"Azure, CrowdStrike, SIEM, Endpoint Sec",matchScore:3},
+  {id:32,name:"TCS",sector:"IT / Technology",area:"Madhapur",hq:"India",industry:"IT Services",functions:"Digital, Engineering, BPO, Global Delivery",headcount:"7000+",year:"1995",url:"https://tcs.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Information Security Analyst","Security Operations Manager","Cloud Security Specialist"],tools:"Azure, GCP, GRC, SIEM, Endpoint Security",matchScore:3},
+  {id:33,name:"T-Mobile GCC",sector:"IT / Technology",area:"Gachibowli",hq:"USA",industry:"Telecom",functions:"Tech Operations, Network Security, Innovation",headcount:"1000+",year:"2024",url:"https://careers.t-mobile.com",status:"New (2024)",cyber:"Yes",cyberRoles:["Network Security Engineer","IAM Ops Specialist","Zero Trust Architect","Threat Analyst"],tools:"Azure AD, PING, Network Security, Zero Trust",matchScore:3},
+  {id:34,name:"Sonatype",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"DevSecOps",functions:"Open Source Security, Cloud Dev, ML, Compliance",headcount:"300+",year:"2025",url:"https://sonatype.com/company/careers",status:"New (2025)",cyber:"Yes",cyberRoles:["Cloud Security Engineer","DevSecOps Lead","Open Source Security Specialist"],tools:"GCP, Azure, SBOM Tools, DevSecOps Pipeline",matchScore:4},
+  {id:35,name:"Pegasystems",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"BPM / CRM",functions:"Product Engineering, Security, Support",headcount:"500+",year:"2018",url:"https://pega.com/about/careers",status:"Established",cyber:"Yes",cyberRoles:["Product Security Engineer","Cloud Security Analyst","IAM Developer"],tools:"Pega Security, Azure, Cloud IAM",matchScore:3},
+  {id:36,name:"HSBC",sector:"BFSI",area:"HITEC City",hq:"UK",industry:"Banking",functions:"Finance Ops, Compliance, Cloud, Risk",headcount:"4000+",year:"2002",url:"https://mycareer.hsbc.com",status:"Established",cyber:"Yes",cyberRoles:["Information Security Manager","Cloud Security Analyst","Cyber Risk Lead"],tools:"PING, Azure AD, Palo Alto, Splunk",matchScore:5},
+  {id:37,name:"Vanguard",sector:"BFSI",area:"Financial District",hq:"USA",industry:"Investment Management",functions:"Engineering, Cloud, Analytics, Risk",headcount:"2300+",year:"2025",url:"https://vanguardjobs.com",status:"New (2025)",cyber:"Yes",cyberRoles:["Cloud Security Engineer","Cyber Threat Analyst","IAM Engineer","Endpoint Security Manager"],tools:"Azure, GCP, Cloud IAM, Endpoint Security",matchScore:4},
+  {id:38,name:"Franklin Templeton",sector:"BFSI",area:"Financial District",hq:"USA",industry:"Asset Management",functions:"Tech Innovation, Operations, Analytics, Security",headcount:"2000+",year:"2006",url:"https://franklintempleton.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Information Security Analyst","Cloud Security Engineer","Risk & Compliance Analyst"],tools:"Azure, GCP, IAM, Risk Management Tools",matchScore:3},
+  {id:39,name:"State Street",sector:"BFSI",area:"HITEC City",hq:"USA",industry:"Financial Services",functions:"Fund Accounting, Risk, Technology, Analytics",headcount:"3000+",year:"2003",url:"https://statestreet.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Analyst","Cloud Security Lead","Risk & Compliance Manager"],tools:"Azure, SIEM, GRC Tools, Endpoint Security",matchScore:3},
+  {id:40,name:"MetLife",sector:"BFSI",area:"Financial District",hq:"USA",industry:"Insurance / Financial",functions:"Cybersecurity, Analytics, Tech Ops, Digital",headcount:"2000+",year:"2024",url:"https://jobs.metlife.com",status:"New (2024)",cyber:"Yes",cyberRoles:["Cybersecurity Engineer","Identity Security Manager","SOC Analyst","IAM Lead"],tools:"Azure AD, PING, CrowdStrike, Splunk, SIEM",matchScore:5},
+  {id:41,name:"Swiss Re",sector:"BFSI",area:"Knowledge City",hq:"Switzerland",industry:"Reinsurance",functions:"Risk Management, Finance, Actuarial, IT",headcount:"1500+",year:"2011",url:"https://swissre.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cyber Risk Manager","Information Security Analyst","Cloud Security Engineer"],tools:"Azure, GRC Tools, Risk Platforms, Endpoint Sec",matchScore:3},
+  {id:42,name:"Citi",sector:"BFSI",area:"Gachibowli",hq:"USA",industry:"Banking",functions:"Risk, Technology, Cybersecurity, Analytics",headcount:"4000+",year:"2002",url:"https://jobs.citi.com",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Manager","IAM Lead","Cloud Security Architect","Endpoint Security Specialist"],tools:"Azure AD, PING, CyberArk, Splunk, SIEM",matchScore:4},
+  {id:43,name:"Barclays",sector:"BFSI",area:"HITEC City",hq:"UK",industry:"Banking",functions:"Risk, Tech, Compliance, Digital Banking",headcount:"2500+",year:"2005",url:"https://search.jobs.barclays",status:"Established",cyber:"Yes",cyberRoles:["Cyber Risk Analyst","Identity Security Engineer","SOC Lead","Cloud Security Specialist"],tools:"Azure, PING, SIEM, Endpoint Security",matchScore:4},
+  {id:44,name:"Deutsche Bank",sector:"BFSI",area:"Financial District",hq:"Germany",industry:"Banking",functions:"Tech, Risk, Compliance, Digital Innovation",headcount:"2000+",year:"2010",url:"https://db.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Information Security Manager","Cloud Security Engineer","IAM & PAM Analyst"],tools:"Azure AD, SIEM, PAM Tools, Endpoint Security",matchScore:4},
+  {id:45,name:"Novartis",sector:"Pharma / Life Sciences",area:"HITEC City",hq:"Switzerland",industry:"Pharma",functions:"Drug Development, Shared Services, IT Security",headcount:"3000+",year:"2001",url:"https://novartis.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Operations Manager","Data Privacy & Security Analyst","Identity & Access Manager"],tools:"Azure AD, SIEM, GRC, Cloud Security",matchScore:4},
+  {id:46,name:"AstraZeneca",sector:"Pharma / Life Sciences",area:"HITEC City",hq:"UK",industry:"Pharma",functions:"Research, IT, Analytics, Digital Health",headcount:"2000+",year:"2010",url:"https://careers.astrazeneca.com",status:"Established",cyber:"Yes",cyberRoles:["IT Security Manager","Cloud Security Analyst","Endpoint Security Specialist"],tools:"Azure, GCP, Endpoint Security, SIEM",matchScore:4},
+  {id:47,name:"Sanofi",sector:"Pharma / Life Sciences",area:"Gachibowli",hq:"France",industry:"Pharma",functions:"Digital Transformation, Data Science, Clinical Ops",headcount:"2600+",year:"2008",url:"https://sanofi.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Engineer","IAM Platform Engineer","CISO Analyst","Cloud Security Lead"],tools:"Azure AD, PING, GCP, Endpoint Security",matchScore:4},
+  {id:48,name:"Eli Lilly",sector:"Pharma / Life Sciences",area:"HITEC City",hq:"USA",industry:"Pharma",functions:"AI, Cloud, Software Product Engineering",headcount:"1500+",year:"2018",url:"https://careers.lilly.com",status:"Established",cyber:"Yes",cyberRoles:["Cloud & Endpoint Security Engineer","Security Governance Analyst","IAM Specialist"],tools:"Azure, GCP, PING, Endpoint Security",matchScore:4},
+  {id:49,name:"Roche",sector:"Pharma / Life Sciences",area:"HITEC City",hq:"Switzerland",industry:"Pharma / Biotech",functions:"Biotech Research, IT, Digital Health",headcount:"1000+",year:"2012",url:"https://roche.com/careers",status:"Established",cyber:"Yes",cyberRoles:["IT Security Manager","Cloud Security Engineer","Data Privacy Analyst"],tools:"Azure, GCP, SIEM, GRC Frameworks",matchScore:3},
+  {id:50,name:"HCA Healthcare",sector:"Healthcare",area:"Gachibowli",hq:"USA",industry:"Hospital Systems",functions:"IT Security, Cloud, Analytics, Digital Health",headcount:"1000+",year:"2024",url:"https://careers.hcahealthcare.com",status:"New (2024)",cyber:"Yes",cyberRoles:["Healthcare Information Security Manager","Cloud Security Engineer","Compliance & Risk Analyst","Endpoint Security Lead"],tools:"Azure, GCP, HIPAA Tools, Endpoint Security",matchScore:4},
+  {id:51,name:"Cohere Health",sector:"Healthcare",area:"Financial District",hq:"USA",industry:"Healthcare AI",functions:"Clinical AI, Data Science, Engineering",headcount:"300+",year:"2026",url:"https://coherehealth.com/careers",status:"New (2026)",cyber:"Yes",cyberRoles:["Healthcare Security Engineer","Compliance & Data Security Lead","Cloud Security Analyst"],tools:"GCP, Azure, HIPAA Security, AI Security",matchScore:3},
+  {id:52,name:"ABB",sector:"Manufacturing / Engineering",area:"Kondapur",hq:"Switzerland",industry:"Industrial Automation",functions:"OT/ICS Security, Automation Engineering",headcount:"1500+",year:"2008",url:"https://careers.abb",status:"Established",cyber:"Yes",cyberRoles:["OT / ICS Security Specialist","Cybersecurity Analyst","Industrial Security Manager"],tools:"OT Security, Azure, Purdue Model, ICS SIEM",matchScore:3},
+  {id:53,name:"Honeywell",sector:"Manufacturing / Engineering",area:"HITEC City",hq:"USA",industry:"Process Automation",functions:"Automation, IT Security, Engineering, Digital",headcount:"3000+",year:"2002",url:"https://careers.honeywell.com",status:"Established",cyber:"Yes",cyberRoles:["OT Security Manager","Cybersecurity Engineer","IT Security Lead","Industrial SecOps Analyst"],tools:"OT Security, Azure, Industrial IoT Security",matchScore:3},
+  {id:54,name:"Bosch",sector:"Manufacturing / Engineering",area:"Madhapur",hq:"Germany",industry:"Automotive / Industrial",functions:"Engineering, AI, Embedded Systems, R&D",headcount:"2000+",year:"2000",url:"https://bosch.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Embedded Security Engineer","IT Security Analyst","OT Security Specialist"],tools:"Embedded Security, Azure, OT Frameworks",matchScore:2},
+  {id:55,name:"McDonald's GCC",sector:"Retail / Consumer",area:"HITEC City",hq:"USA",industry:"QSR / Technology",functions:"Technology, Digital Transformation, Cybersecurity",headcount:"2000+",year:"2024",url:"https://corporate.mcdonalds.com/careers",status:"New (2024)",cyber:"Yes",cyberRoles:["Cybersecurity Operations Lead","IAM & SSO Specialist","CISO Analyst","Security Architect"],tools:"Azure AD, PING, Zero Trust, Endpoint Security",matchScore:4},
+  {id:56,name:"Walmart Global Tech",sector:"Retail / Consumer",area:"Gachibowli",hq:"USA",industry:"Retail Tech",functions:"Engineering, Product Dev, AI, Supply Chain",headcount:"5000+",year:"2008",url:"https://careers.walmart.com",status:"Established",cyber:"Yes",cyberRoles:["Security Engineer","Cloud Security Architect","IAM Lead","Threat Intelligence Analyst"],tools:"Azure, GCP, Endpoint Security, IAM Platforms",matchScore:4},
+  {id:57,name:"Target India",sector:"Retail / Consumer",area:"Gachibowli",hq:"USA",industry:"Retail Tech",functions:"Engineering, Data Analytics, Security, Product",headcount:"4000+",year:"2005",url:"https://target.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Security Operations Manager","Cloud Security Engineer","IAM Analyst","Endpoint Security Lead"],tools:"Azure, CrowdStrike, PING, SIEM, GCP",matchScore:4},
+  {id:58,name:"Tesco GCC",sector:"Retail / Consumer",area:"Gachibowli",hq:"UK",industry:"Retail Tech",functions:"Technology, Data, Security, Digital Operations",headcount:"4000+",year:"2004",url:"https://tesco-careers.com",status:"Established",cyber:"Yes",cyberRoles:["IT Security Manager","Cloud Security Analyst","SOC Lead"],tools:"Azure, SIEM, Endpoint Security, Cloud IAM",matchScore:3},
+  {id:59,name:"Marriott GCC",sector:"Retail / Consumer",area:"Nanakramguda",hq:"USA",industry:"Hospitality",functions:"IT Security, Operations, Technology Innovation",headcount:"1000+",year:"2024",url:"https://jobs.marriott.com",status:"New (2024)",cyber:"Yes",cyberRoles:["IT Security Specialist","Data Privacy Manager","Cloud Security Engineer"],tools:"Azure, GCP, Endpoint Security, SIEM",matchScore:3},
+  {id:60,name:"Deloitte",sector:"Consulting / Professional Svcs",area:"Madhapur",hq:"USA",industry:"Consulting",functions:"Risk Advisory, Cyber, Cloud, Tax, Assurance",headcount:"5000+",year:"2004",url:"https://apply.deloitte.com",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Consultant","Risk Advisory - InfoSec","IAM Security Specialist","GRC Lead"],tools:"Azure, GCP, PING, Splunk, Risk Frameworks",matchScore:4},
+  {id:61,name:"PwC",sector:"Consulting / Professional Svcs",area:"HITEC City",hq:"UK",industry:"Consulting",functions:"Cyber Risk, Tax, Assurance, Digital Advisory",headcount:"3000+",year:"2005",url:"https://pwc.in/careers",status:"Established",cyber:"Yes",cyberRoles:["Cyber Risk Manager","Identity & Access - Senior Associate","Cloud Security Consultant","GRC Analyst"],tools:"Azure AD, GCP, PING, GRC Frameworks",matchScore:4},
+  {id:62,name:"EY",sector:"Consulting / Professional Svcs",area:"Madhapur",hq:"UK",industry:"Consulting",functions:"Cybersecurity, GRC, Advisory, Digital",headcount:"3000+",year:"2004",url:"https://eyglobal.yello.co",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Manager","Threat Intelligence Lead","GRC Analyst","SOC Advisory Lead"],tools:"Azure, GCP, GRC Tools, SIEM, Threat Intel",matchScore:4},
+  {id:63,name:"KPMG",sector:"Consulting / Professional Svcs",area:"Madhapur",hq:"Netherlands",industry:"Consulting",functions:"Audit, Tax, Advisory, Risk, Cyber",headcount:"2000+",year:"2003",url:"https://kpmgcareers.kpmg.com",status:"Established",cyber:"Yes",cyberRoles:["Cyber Security Manager","SOC Analyst","Risk Advisory Specialist"],tools:"Azure, SIEM, Risk Frameworks, GRC",matchScore:3},
+  {id:64,name:"Accenture",sector:"Consulting / Professional Svcs",area:"HITEC City",hq:"Ireland",industry:"IT / Consulting",functions:"Cloud, Cybersecurity, AI, Digital Engineering",headcount:"8000+",year:"2001",url:"https://accenture.com/in-en/careers",status:"Established",cyber:"Yes",cyberRoles:["Security Operations Manager","Azure Security Architect","Cyber Defense Analyst","IAM Lead"],tools:"Azure, GCP, PING, Splunk, CrowdStrike",matchScore:4},
+  {id:65,name:"Shell",sector:"Energy / Utilities",area:"Financial District",hq:"Netherlands",industry:"Energy",functions:"Digital, Analytics, IT Engineering, Security",headcount:"1500+",year:"2015",url:"https://shell.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Analyst","Cloud Security Engineer","OT Security Specialist","SIEM Engineer"],tools:"Azure, GCP, SIEM, OT Security Frameworks",matchScore:3},
+  {id:66,name:"BP",sector:"Energy / Utilities",area:"Gachibowli",hq:"UK",industry:"Energy",functions:"Digital, Risk, IT Engineering, Data Analytics",headcount:"1000+",year:"2018",url:"https://bp.com/careers",status:"Established",cyber:"Yes",cyberRoles:["IT Security Manager","Cloud Security Engineer","OT Risk Analyst"],tools:"Azure, GCP, OT Security, SIEM",matchScore:3},
+  {id:67,name:"DAZN GCC",sector:"Media / Entertainment",area:"HITEC City",hq:"UK",industry:"Sports Streaming",functions:"Engineering, Data Science, AI Ops, Digital",headcount:"1500+",year:"2023",url:"https://dazn.com/careers",status:"Recent",cyber:"Yes",cyberRoles:["Cloud Security Engineer","Data Security Analyst","Security Operations Analyst"],tools:"GCP, Azure, Cloud Security, SIEM",matchScore:3},
+  {id:68,name:"ArcelorMittal",sector:"Manufacturing / Engineering",area:"Financial District",hq:"Luxembourg",industry:"Steel / Manufacturing",functions:"OT Security, IT Engineering, Analytics",headcount:"500+",year:"2026",url:"https://careers.arcelormittal.com",status:"New (2026)",cyber:"Yes",cyberRoles:["OT Security Manager","Cybersecurity Analyst","IT Security Engineer"],tools:"OT Security, Azure, ICS Frameworks",matchScore:3},
+  {id:69,name:"Lonza Group",sector:"Pharma / Life Sciences",area:"HITEC City",hq:"Switzerland",industry:"CDMO / Biopharma",functions:"Pharma Capability, Research, Digital Operations",headcount:"500+",year:"2026",url:"https://lonza.com/careers",status:"New (2026)",cyber:"Yes",cyberRoles:["Cybersecurity Engineer","Data Privacy & Security Analyst","Cloud Security Lead"],tools:"Azure, GCP, GRC Frameworks, HIPAA Tools",matchScore:3},
+  {id:70,name:"ManTech",sector:"IT / Technology",area:"HITEC City",hq:"USA",industry:"Defense IT",functions:"Cybersecurity, IT Defense, Government Tech",headcount:"300+",year:"2020",url:"https://mantech.com/careers",status:"Established",cyber:"Yes",cyberRoles:["Cybersecurity Engineer","Defense IT Security Analyst","Cloud Security Specialist"],tools:"Azure, GovCloud, Security Frameworks, SIEM",matchScore:3},
+];
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+let currentTab = 'directory';
+let viewMode = 'grid'; // 'grid' or 'table'
+let currentPage = 1;
+const PAGE_SIZE = 20;
+let extraGCCs = JSON.parse(localStorage.getItem('hyd_gcc_extra') || '[]');
+let allData = () => [...GCC_DATA, ...extraGCCs];
+
+const SECTOR_STYLE = {
+  "IT / Technology":{"color":"var(--it-c)","bg":"var(--it-bg)","logo":"#1646f0"},
+  "BFSI":{"color":"var(--bfsi-c)","bg":"var(--bfsi-bg)","logo":"#059669"},
+  "Pharma / Life Sciences":{"color":"var(--ph-c)","bg":"var(--ph-bg)","logo":"#7c3aed"},
+  "Healthcare":{"color":"var(--hc-c)","bg":"var(--hc-bg)","logo":"#0891b2"},
+  "Manufacturing / Engineering":{"color":"var(--mfg-c)","bg":"var(--mfg-bg)","logo":"#d97706"},
+  "Retail / Consumer":{"color":"var(--rt-c)","bg":"var(--rt-bg)","logo":"#db2777"},
+  "Consulting / Professional Svcs":{"color":"var(--cs-c)","bg":"var(--cs-bg)","logo":"#374151"},
+  "Energy / Utilities":{"color":"var(--en-c)","bg":"var(--en-bg)","logo":"#16a34a"},
+  "Media / Entertainment":{"color":"var(--med-c)","bg":"var(--med-bg)","logo":"#9333ea"},
+};
+
+function sectorStyle(s){ return SECTOR_STYLE[s] || {color:"#374151",bg:"#f9fafb",logo:"#374151"}; }
+function logoInitials(n){ return n.split(/[\s\/]/)[0].substring(0,2).toUpperCase(); }
+function stars(n){ return '★'.repeat(n) + '☆'.repeat(5-n); }
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('navDate').textContent = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  populateFilters();
+  updateHeroStats();
+  renderAll();
+});
+
+function populateFilters(){
+  const sectors = [...new Set(GCC_DATA.map(g=>g.sector))].sort();
+  const areas = [...new Set(GCC_DATA.map(g=>g.area))].sort();
+  const sEl = document.getElementById('sectorSel');
+  const aEl = document.getElementById('areaSel');
+  sectors.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sEl.appendChild(o);});
+  areas.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;aEl.appendChild(o);});
+}
+
+function updateHeroStats(){
+  const d = allData();
+  document.getElementById('totalCount').textContent = d.length;
+  document.getElementById('cyberCount').textContent = d.filter(g=>g.cyber==='Yes').length;
+  document.getElementById('newCount').textContent = d.filter(g=>g.status&&(g.status.includes('2024')||g.status.includes('2025')||g.status.includes('2026'))).length;
+  document.getElementById('navCount').textContent = d.length + ' GCCs Tracked';
+}
+
+// ══════════════════════════════════════════════════════
+//  FILTERING
+// ══════════════════════════════════════════════════════
+function getFiltered(){
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const sec = document.getElementById('sectorSel').value;
+  const area = document.getElementById('areaSel').value;
+  const stat = document.getElementById('statusSel').value;
+  const cyb = document.getElementById('cyberSel').value;
+  let data = allData();
+  if(currentTab === 'cyber') data = data.filter(g=>g.cyber==='Yes');
+  if(currentTab === 'new') data = data.filter(g=>g.status&&(g.status.includes('2024')||g.status.includes('2025')||g.status.includes('2026')));
+  return data.filter(g=>{
+    if(q && !g.name.toLowerCase().includes(q) && !g.functions.toLowerCase().includes(q) && !g.area.toLowerCase().includes(q) && !(g.cyberRoles||[]).join(' ').toLowerCase().includes(q)) return false;
+    if(sec && g.sector !== sec) return false;
+    if(area && g.area !== area) return false;
+    if(stat && !g.status.includes(stat)) return false;
+    if(cyb && g.cyber !== cyb) return false;
+    return true;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════
+function renderAll(){
+  const main = document.getElementById('mainContent');
+  if(currentTab === 'upload'){ renderUpload(main); return; }
+  const filtered = getFiltered();
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  if(currentPage > totalPages) currentPage = 1;
+  const slice = filtered.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+
+  let html = renderStatBar(filtered);
+
+  if(currentTab==='cyber'){
+    html += `<div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:.9rem 1.25rem;margin-bottom:1rem;font-size:.85rem;color:#166534">
+      <strong>Your Profile Match</strong> — Roles filtered for PING · Azure AD · GCP · Endpoint Security · IAM Management. ★★★★★ = strongest match for your background.
+    </div>`;
+  }
+
+  if(filtered.length === 0){
+    html += `<div class="empty"><div class="ico">🔍</div><p>No GCCs match your filters.</p></div>`;
+    main.innerHTML = html;
+    return;
+  }
+
+  if(viewMode === 'grid'){
+    html += `<div class="gcc-grid">` + slice.map(g=>cardHTML(g)).join('') + `</div>`;
+  } else {
+    html += tableHTML(slice);
+  }
+  html += paginationHTML(currentPage, totalPages, filtered.length);
+  main.innerHTML = html;
+}
+
+function renderStatBar(filtered){
+  const cyberCount = filtered.filter(g=>g.cyber==='Yes').length;
+  const newCount = filtered.filter(g=>g.status&&(g.status.includes('New')||g.status.includes('Recent'))).length;
+  return `<div class="stats-bar">
+    <div class="stat-card accent-card"><div class="num">${filtered.length}</div><div class="lbl">GCCs Showing</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--accent2)">${cyberCount}</div><div class="lbl">Cybersec Hiring</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--warn)">${newCount}</div><div class="lbl">New / Recent</div></div>
+    <div class="stat-card"><div class="num">${[...new Set(filtered.map(g=>g.sector))].length}</div><div class="lbl">Sectors</div></div>
+    <div class="stat-card"><div class="num">${[...new Set(filtered.map(g=>g.area))].length}</div><div class="lbl">GCC Areas</div></div>
+  </div>`;
+}
+
+function cardHTML(g){
+  const st = sectorStyle(g.sector);
+  const isCyber = g.cyber === 'Yes';
+  const isNew = g.status && (g.status.includes('New') || g.status.includes('Recent'));
+  const roles = (g.cyberRoles||[]).slice(0,3);
+  return `<div class="gcc-card${isCyber?' cyber-match':''}" onclick="openModal(${g.id})">
+    <div class="card-head">
+      <div class="card-logo" style="background:${st.logo}">${logoInitials(g.name)}</div>
+      <div class="card-badges">
+        ${isCyber?'<span class="badge badge-cyber">⚑ Cybersec</span>':''}
+        ${isNew?`<span class="badge badge-new">${g.status}</span>`:'<span class="badge badge-est">Established</span>'}
+        ${g.matchScore===5?'<span class="badge" style="background:#fef2f2;color:#991b1b">★★★★★</span>':''}
+      </div>
+    </div>
+    <div class="card-name">${g.name}</div>
+    <div class="card-meta">
+      <span>📍 ${g.area}</span>
+      <span>🌐 ${g.hq}</span>
+      <span>👥 ${g.headcount}</span>
+    </div>
+    <div class="card-sector" style="color:${st.color};background:${st.bg}">${g.sector}</div>
+    <div class="card-fns">${g.functions}</div>
+    ${roles.length?`<div style="font-size:.75rem;color:var(--mid);margin-bottom:.5rem">🔒 ${roles.join(' · ')}</div>`:''}
+    <div class="card-actions">
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openModal(${g.id})">View Details</button>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();downloadGCCExcel(${g.id})">⬇ Excel</button>
+      <a href="${g.url}" target="_blank" onclick="event.stopPropagation()" class="btn btn-outline btn-sm" style="text-decoration:none">Apply →</a>
+    </div>
+  </div>`;
+}
+
+function tableHTML(data){
+  const rows = data.map(g=>{
+    const st = sectorStyle(g.sector);
+    return `<tr>
+      <td><strong>${g.name}</strong></td>
+      <td><span class="badge" style="color:${st.color};background:${st.bg};border:1px solid ${st.color}33">${g.sector}</span></td>
+      <td>${g.area}</td>
+      <td>${g.hq}</td>
+      <td>${g.headcount}</td>
+      <td>${g.year}</td>
+      <td>${g.cyber==='Yes'?'<span class="badge badge-cyber">Yes</span>':'—'}</td>
+      <td>${g.matchScore?'★'.repeat(g.matchScore):'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-primary btn-sm" onclick="openModal(${g.id})">View</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadGCCExcel(${g.id})">⬇</button>
+        <a href="${g.url}" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">Apply</a>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div class="gcc-table-wrap"><table class="gcc-table">
+    <thead><tr>
+      <th onclick="sortBy('name')">Company ↕</th>
+      <th>Sector</th>
+      <th onclick="sortBy('area')">Area ↕</th>
+      <th>HQ</th>
+      <th onclick="sortBy('headcount')">Headcount ↕</th>
+      <th onclick="sortBy('year')">Est. ↕</th>
+      <th>Cybersec</th>
+      <th>Match</th>
+      <th>Actions</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function paginationHTML(page, total, count){
+  if(total <= 1) return '';
+  const pages = [];
+  for(let i=1;i<=total;i++) pages.push(`<button class="page-btn${i===page?' active':''}" onclick="goPage(${i})">${i}</button>`);
+  return `<div class="pagination">
+    <span class="page-info">Showing ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE,count)} of ${count}</span>
+    <div class="page-btns">
+      <button class="page-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹ Prev</button>
+      ${pages.join('')}
+      <button class="page-btn" onclick="goPage(${page+1})" ${page===total?'disabled':''}>Next ›</button>
+    </div>
+  </div>`;
+}
+
+function renderUpload(main){
+  main.innerHTML = `
+  <div class="upload-panel">
+    <label for="xlsxUpload">
+      <div class="upload-icon">📂</div>
+      <strong style="font-family:'Syne',sans-serif;font-size:1.1rem">Upload Your GCC Excel / CSV</strong>
+      <p style="font-size:.85rem;color:var(--mid)">Upload an Excel (.xlsx) or CSV file to add more GCC companies to this directory. Expected columns: name, sector, area, hq, functions, headcount, year, url, cyber</p>
+      <span class="btn btn-primary">Choose File</span>
+    </label>
+    <input type="file" id="xlsxUpload" accept=".xlsx,.csv" onchange="handleUpload(this)">
+  </div>
+  <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem">
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;margin-bottom:.75rem">Custom GCC Entry</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+      <input id="f_name" placeholder="Company Name" class="form-inp">
+      <input id="f_sector" placeholder="Sector" class="form-inp">
+      <input id="f_area" placeholder="GCC Area (e.g. HITEC City)" class="form-inp">
+      <input id="f_hq" placeholder="HQ Country" class="form-inp">
+      <input id="f_functions" placeholder="Key Functions" class="form-inp">
+      <input id="f_headcount" placeholder="Headcount (e.g. 500+)" class="form-inp">
+      <input id="f_year" placeholder="Est. Year" class="form-inp">
+      <input id="f_url" placeholder="Careers URL" class="form-inp">
+    </div>
+    <div style="margin-top:.75rem;display:flex;gap:.5rem;align-items:center">
+      <label style="font-size:.85rem;color:var(--mid)"><input type="checkbox" id="f_cyber"> Cybersecurity Hiring?</label>
+      <button class="btn btn-primary" style="margin-left:auto" onclick="addCustomGCC()">Add to Directory</button>
+    </div>
+  </div>
+  <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:1.25rem 1.5rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <h3 style="font-family:'Syne',sans-serif;font-size:1rem">Manually Added GCCs (${extraGCCs.length})</h3>
+      ${extraGCCs.length?`<button class="btn btn-outline btn-sm" onclick="clearExtra()">Clear All</button>`:''}
+    </div>
+    ${extraGCCs.length===0?'<p style="font-size:.85rem;color:var(--mid)">No custom GCCs added yet.</p>':
+      extraGCCs.map((g,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+        <span style="font-size:.88rem"><strong>${g.name}</strong> — ${g.sector} · ${g.area}</span>
+        <button class="btn btn-outline btn-sm" onclick="removeExtra(${i})">Remove</button>
+      </div>`).join('')}
+  </div>`;
+  document.querySelectorAll('.form-inp').forEach(el=>{
+    el.style.cssText='padding:.5rem .75rem;border:1.5px solid var(--line);border-radius:8px;font-family:DM Sans,sans-serif;font-size:.85rem;width:100%;outline:none';
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════════
+function openModal(id){
+  const g = allData().find(x=>x.id===id);
+  if(!g) return;
+  const st = sectorStyle(g.sector);
+  document.getElementById('mTitle').textContent = g.name;
+  document.getElementById('mMeta').innerHTML = `<span>📍 ${g.area}</span><span>🌐 ${g.hq}</span><span>Est. ${g.year}</span>`;
+  const roles = (g.cyberRoles||[]).map(r=>`<a class="job-chip" href="${g.url}" target="_blank"><span class="dot"></span>${r}</a>`).join('');
+  document.getElementById('mBody').innerHTML = `
+    <div class="modal-grid">
+      <div class="mfield"><div class="lbl">Sector</div><div class="val" style="color:${st.color}">${g.sector}</div></div>
+      <div class="mfield"><div class="lbl">GCC Area</div><div class="val">${g.area}</div></div>
+      <div class="mfield"><div class="lbl">Headquarters</div><div class="val">${g.hq}</div></div>
+      <div class="mfield"><div class="lbl">Est. Headcount</div><div class="val">${g.headcount}</div></div>
+      <div class="mfield"><div class="lbl">Year Established</div><div class="val">${g.year}</div></div>
+      <div class="mfield"><div class="lbl">Status</div><div class="val">${g.status}</div></div>
+      <div class="mfield"><div class="lbl">Cybersec Hiring</div><div class="val" style="color:${g.cyber==='Yes'?'#166534':'var(--mid)'}">${g.cyber==='Yes'?'✓ Yes':'—'}</div></div>
+      <div class="mfield"><div class="lbl">Profile Match</div><div class="val match-score">${g.matchScore?'★'.repeat(g.matchScore)+'☆'.repeat(5-g.matchScore):'—'}</div></div>
+    </div>
+    <div class="mfield" style="margin-bottom:.75rem"><div class="lbl">Key Functions</div><div class="val" style="font-weight:400;font-size:.88rem;line-height:1.5">${g.functions}</div></div>
+    ${g.tools?`<div class="mfield" style="margin-bottom:1rem"><div class="lbl">Security Tools / Stack</div><div class="val" style="font-weight:400;font-size:.85rem;color:var(--mid)">${g.tools}</div></div>`:''}
+    ${roles?`<div class="jobs-section"><h3>🔒 Cybersecurity Openings <span style="font-size:.78rem;font-weight:400;color:var(--mid)">(click to apply)</span></h3><div>${roles}</div></div>`:''}
+    <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line);display:flex;gap:.5rem;flex-wrap:wrap">
+      <a href="${g.url}" target="_blank" class="btn btn-primary" style="text-decoration:none">Apply at ${g.name} →</a>
+      <button class="btn btn-outline" onclick="downloadGCCExcel(${g.id})">⬇ Download Excel</button>
+    </div>`;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal(e){ if(e.target===document.getElementById('modal')) document.getElementById('modal').classList.remove('open'); }
+
+// ══════════════════════════════════════════════════════
+//  EXCEL DOWNLOAD
+// ══════════════════════════════════════════════════════
+function downloadGCCExcel(id){
+  const g = allData().find(x=>x.id===id);
+  if(!g){ toast('Company not found','error'); return; }
+  const wb = XLSX.utils.book_new();
+  const infoRows = [
+    ['Field','Value'],
+    ['Company',g.name],['Sector',g.sector],['GCC Area',g.area],
+    ['HQ Country',g.hq],['Industry',g.industry],['Key Functions',g.functions],
+    ['Est. Headcount',g.headcount],['Year Established',g.year],
+    ['Status',g.status],['Cybersec Hiring',g.cyber],
+    ['Careers URL',g.url],['Security Tools / Stack',g.tools||'N/A'],
+    ['Profile Match Score',g.matchScore?'★'.repeat(g.matchScore):'N/A'],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(infoRows);
+  ws1['!cols'] = [{wch:25},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Company Overview');
+  if(g.cyberRoles && g.cyberRoles.length){
+    const roleRows = [['#','Cyber Role','Careers Link'],...g.cyberRoles.map((r,i)=>[i+1,r,g.url])];
+    const ws2 = XLSX.utils.aoa_to_sheet(roleRows);
+    ws2['!cols'] = [{wch:5},{wch:45},{wch:55}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Cybersecurity Openings');
+  }
+  XLSX.writeFile(wb, `${g.name.replace(/[\/\s]+/g,'_')}_GCC_Jobs.xlsx`);
+  toast(`Downloaded ${g.name} details`, 'success');
+}
+
+function downloadAllExcel(){
+  const data = getFiltered();
+  const wb = XLSX.utils.book_new();
+  const rows = [['#','Company','Sector','GCC Area','HQ','Industry','Key Functions','Headcount','Year','Status','Cybersec Hiring','Match Score','Careers URL','Cyber Roles','Tools Stack']];
+  data.forEach((g,i)=>rows.push([i+1,g.name,g.sector,g.area,g.hq,g.industry,g.functions,g.headcount,g.year,g.status,g.cyber,g.matchScore?g.matchScore+'/5':'N/A',g.url,(g.cyberRoles||[]).join(', '),g.tools||'']));
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [4,22,22,18,10,20,40,12,8,14,12,12,50,60,50].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws, 'All GCCs');
+  const cyberRows = [['#','Company','Sector','Area','Cyber Roles','Tools/Stack','Match','URL']];
+  data.filter(g=>g.cyber==='Yes').forEach((g,i)=>cyberRows.push([i+1,g.name,g.sector,g.area,(g.cyberRoles||[]).join(', '),g.tools||'',g.matchScore?'★'.repeat(g.matchScore):'',g.url]));
+  const ws2 = XLSX.utils.aoa_to_sheet(cyberRows);
+  ws2['!cols'] = [4,22,22,18,60,50,12,50].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Cybersecurity Roles');
+  XLSX.writeFile(wb, `Hyderabad_GCC_Directory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Excel downloaded!','success');
+}
+
+// ══════════════════════════════════════════════════════
+//  AUTO REFRESH (search LinkedIn / open job boards)
+// ══════════════════════════════════════════════════════
+const KNOWN_SEARCH_SOURCES = [
+  {label:'LinkedIn – Info Security Manager Hyderabad GCC',url:'https://www.linkedin.com/jobs/search/?keywords=information+security+manager+GCC&location=Hyderabad%2C+Telangana%2C+India'},
+  {label:'LinkedIn – IAM Manager Hyderabad',url:'https://www.linkedin.com/jobs/search/?keywords=IAM+manager+GCC&location=Hyderabad%2C+Telangana%2C+India'},
+  {label:'Naukri – Cybersecurity Manager Hyderabad',url:'https://www.naukri.com/cybersecurity-manager-jobs-in-hyderabad'},
+  {label:'Indeed – Information Security Hyderabad',url:'https://in.indeed.com/jobs?q=information+security+manager&l=Hyderabad%2C+Telangana'},
+  {label:'Glassdoor – Security Manager GCC Hyderabad',url:'https://www.glassdoor.co.in/Job/hyderabad-security-manager-jobs-SRCH_IL.0,9_IC2864892_KO10,26.htm'},
+];
+
+function refreshGCCs(){
+  const btn = document.getElementById('refreshBtn');
+  btn.innerHTML = '<span class="spin"></span> Checking…';
+  btn.disabled = true;
+  setTimeout(()=>{
+    btn.innerHTML = '↻ Check New GCCs';
+    btn.disabled = false;
+    // Show modal with job board links
+    document.getElementById('mTitle').textContent = 'Check for New GCCs & Openings';
+    document.getElementById('mMeta').innerHTML = `<span>Live job search links — opens in new tab</span>`;
+    document.getElementById('mBody').innerHTML = `
+      <p style="font-size:.85rem;color:var(--mid);margin-bottom:1rem;line-height:1.6">Since this is a static HTML site, auto-discovery works by opening curated job board searches. Click each source below to check for new GCC cybersecurity openings in Hyderabad:</p>
+      ${KNOWN_SEARCH_SOURCES.map(s=>`<a href="${s.url}" target="_blank" class="job-chip" style="display:flex;margin-bottom:.4rem;padding:.55rem .85rem">
+        <span class="dot"></span><span>${s.label}</span><span style="margin-left:auto;font-size:.8rem;color:var(--accent)">↗</span>
+      </a>`).join('')}
+      <div style="margin-top:1.25rem;padding:1rem;background:var(--bg);border-radius:8px;font-size:.82rem;color:var(--mid)">
+        💡 <strong>Tip:</strong> When you find a new GCC, use the <em>Upload / Import</em> tab to add it to your directory. Your additions are saved locally in your browser.
+      </div>`;
+    document.getElementById('modal').classList.add('open');
+    toast('Live job sources ready','success');
+  }, 1400);
+}
+
+// ══════════════════════════════════════════════════════
+//  UPLOAD / IMPORT
+// ══════════════════════════════════════════════════════
+function handleUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      let added = 0;
+      const maxId = Math.max(...allData().map(g=>g.id), 10000);
+      rows.forEach((row,i)=>{
+        const name = row['name']||row['Company']||row['company']||'';
+        if(!name) return;
+        const exists = allData().find(g=>g.name.toLowerCase()===name.toLowerCase());
+        if(exists) return;
+        extraGCCs.push({
+          id: maxId+i+1,
+          name,
+          sector: row['sector']||row['Sector']||'IT / Technology',
+          area: row['area']||row['Area']||'HITEC City',
+          hq: row['hq']||row['HQ']||'N/A',
+          industry: row['industry']||'Technology',
+          functions: row['functions']||row['Functions']||'Technology Operations',
+          headcount: String(row['headcount']||row['Headcount']||'N/A'),
+          year: String(row['year']||row['Year']||'2024'),
+          url: row['url']||row['URL']||'https://linkedin.com',
+          status: 'Imported',
+          cyber: row['cyber']||row['Cyber']||'No',
+          cyberRoles:[],tools:'',matchScore:0
+        });
+        added++;
+      });
+      localStorage.setItem('hyd_gcc_extra', JSON.stringify(extraGCCs));
+      updateHeroStats();
+      toast(`✓ Added ${added} new GCC${added!==1?'s':''} from file`,'success');
+      renderAll();
+    } catch(err){ toast('Could not parse file. Check column names.','error'); }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function addCustomGCC(){
+  const name = document.getElementById('f_name').value.trim();
+  if(!name){ toast('Company name is required','error'); return; }
+  const exists = allData().find(g=>g.name.toLowerCase()===name.toLowerCase());
+  if(exists){ toast('Company already in directory','error'); return; }
+  const maxId = Math.max(...allData().map(g=>g.id), 10000);
+  extraGCCs.push({
+    id: maxId+1,
+    name,
+    sector: document.getElementById('f_sector').value||'IT / Technology',
+    area: document.getElementById('f_area').value||'HITEC City',
+    hq: document.getElementById('f_hq').value||'N/A',
+    industry:'Technology',
+    functions: document.getElementById('f_functions').value||'Technology Operations',
+    headcount: document.getElementById('f_headcount').value||'N/A',
+    year: document.getElementById('f_year').value||'2024',
+    url: document.getElementById('f_url').value||'https://linkedin.com',
+    status:'Custom',
+    cyber: document.getElementById('f_cyber').checked?'Yes':'No',
+    cyberRoles:[],tools:'',matchScore:0
+  });
+  localStorage.setItem('hyd_gcc_extra', JSON.stringify(extraGCCs));
+  updateHeroStats();
+  toast(`✓ ${name} added to directory`,'success');
+  renderAll();
+}
+
+function removeExtra(i){
+  extraGCCs.splice(i,1);
+  localStorage.setItem('hyd_gcc_extra',JSON.stringify(extraGCCs));
+  updateHeroStats();
+  renderAll();
+}
+
+function clearExtra(){
+  if(!confirm('Remove all manually added GCCs?')) return;
+  extraGCCs=[];
+  localStorage.removeItem('hyd_gcc_extra');
+  updateHeroStats();
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════
+function switchTab(tab, el){
+  currentTab = tab; currentPage = 1;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderAll();
+}
+
+function toggleView(){
+  viewMode = viewMode==='grid'?'table':'grid';
+  currentPage = 1;
+  renderAll();
+}
+
+function goPage(p){ currentPage=p; renderAll(); window.scrollTo({top:200,behavior:'smooth'}); }
+
+let sortDir = {};
+function sortBy(key){
+  sortDir[key] = sortDir[key]==='asc'?'desc':'asc';
+  GCC_DATA.sort((a,b)=>{
+    const av=a[key]||'', bv=b[key]||'';
+    return sortDir[key]==='asc'?String(av).localeCompare(String(bv)):String(bv).localeCompare(String(av));
+  });
+  renderAll();
+}
+
+function toast(msg, type=''){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  setTimeout(()=>t.className='toast',3000);
+}
+</script>
+</body>
+</html>
