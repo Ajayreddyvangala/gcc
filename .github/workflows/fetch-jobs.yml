@@ -1,0 +1,29 @@
+name: Fetch GCC Jobs Daily
+
+on:
+  schedule:
+    - cron: '30 18 * * *'   # 18:30 UTC = midnight IST every day
+  workflow_dispatch:          # run manually anytime from GitHub Actions tab
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests supabase
+
+      - name: Run job fetcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          JSEARCH_KEY:  ${{ secrets.JSEARCH_KEY }}
+        run: python scripts/fetch_jobs.py
