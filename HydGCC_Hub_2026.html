@@ -191,6 +191,16 @@ select:focus{border-color:var(--accent)}
   .search-wrap{max-width:100%}
   .ctrl-right{margin-left:0}
 }
+
+/* ── Live job role blocks ── */
+.role-block{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.65rem .9rem;margin-bottom:.55rem}
+.role-name{font-size:.85rem;font-weight:600;color:var(--ink);margin-bottom:.45rem}
+.role-links{display:flex;gap:.4rem;flex-wrap:wrap}
+.src-btn{padding:.28rem .7rem;border-radius:5px;font-size:.75rem;font-weight:600;text-decoration:none;transition:.15s;letter-spacing:.01em}
+.src-li{background:#0a66c2;color:#fff}.src-li:hover{background:#0852a0}
+.src-nk{background:#ff7555;color:#fff}.src-nk:hover{background:#e55a3a}
+.src-in{background:#2d2d2d;color:#fff}.src-in:hover{background:#111}
+.src-co{background:#fff;color:var(--ink);border:1.5px solid var(--line)}.src-co:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -283,6 +293,113 @@ select:focus{border-color:var(--accent)}
 <div class="toast" id="toast"></div>
 
 <script>
+
+// ── LIVE JOB SEARCH LINK GENERATOR ────────────────────────────
+// Instead of hardcoded company portal URLs (which return "no jobs found"
+// when a role isn't currently posted), we generate live search links
+// from LinkedIn, Naukri, and Indeed — these always show real current openings.
+
+function buildLiveLinks(companyName, roleName) {
+  const co = encodeURIComponent(companyName);
+  const role = encodeURIComponent(roleName);
+  const coRole = encodeURIComponent(companyName + ' ' + roleName);
+  const loc = encodeURIComponent('Hyderabad, Telangana, India');
+  const locN = encodeURIComponent('Hyderabad');
+
+  return {
+    linkedin: `https://www.linkedin.com/jobs/search/?keywords=${coRole}&location=${loc}&f_TPR=r2592000`,
+    naukri:   `https://www.naukri.com/${roleName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-jobs-in-hyderabad?companies=${encodeURIComponent(companyName)}`,
+    indeed:   `https://in.indeed.com/jobs?q=${coRole}&l=${locN}&fromage=30`,
+    glassdoor:`https://www.glassdoor.co.in/Job/hyderabad-${roleName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-jobs-SRCH_IL.0,9_IC2864892_KO10,${10+roleName.length}.htm`,
+    company:  null // will be set per-company below
+  };
+}
+
+// Company-specific career page base URLs (for the "Company Site" button)
+const COMPANY_CAREER_PAGES = {
+  'Microsoft':          'https://jobs.careers.microsoft.com/global/en/search?q=security&lc=Hyderabad',
+  'Google':             'https://careers.google.com/jobs/results/?distance=50&location=Hyderabad%2C+Telangana&q=security',
+  'Amazon / AWS':       'https://www.amazon.jobs/en/search?base_query=security&loc_query=Hyderabad',
+  'JP Morgan Chase':    'https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?keyword=security&lastSelectedFacet=LOCATIONS&selectedLocationsFacet=300000000272118',
+  'HSBC':               'https://mycareer.hsbc.com/en_GB/external/SearchJobs/security?3_120_3=5357993',
+  'Goldman Sachs':      'https://higher.gs.com/roles?query=security&locations=Hyderabad',
+  'Ping Identity':      'https://www.sailpoint.com/company/careers/?department=&location=India#open-positions',
+  'Wells Fargo':        'https://www.wellsfargojobs.com/en/jobs/?q=security&location=Hyderabad',
+  'Salesforce':         'https://careers.salesforce.com/en/jobs/?search=security&location=Hyderabad',
+  'IBM':                'https://www.ibm.com/in-en/employment/#jobs?f=country%3AIndia%2Ccity%3AHyderabad',
+  'Oracle':             'https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/jobs?keyword=security&locations=Hyderabad',
+  'ServiceNow':         'https://careers.servicenow.com/careers/jobs?query=security&location=Hyderabad',
+  'Qualcomm':           'https://careers.qualcomm.com/careers/job?q=security&location=Hyderabad',
+  'Micron Technology':  'https://jobs.micron.com/search-jobs/security/Hyderabad/23870',
+  'Palo Alto Networks': 'https://jobs.paloaltonetworks.com/en/jobs/?search=security&location=Hyderabad',
+  'CrowdStrike':        'https://careers.crowdstrike.com/us/en/search-results?keywords=security&location=Hyderabad',
+  'SailPoint':          'https://www.sailpoint.com/company/careers/?department=&location=India#open-positions',
+  'BeyondTrust':        'https://www.beyondtrust.com/company/careers',
+  'Cisco':              'https://jobs.cisco.com/jobs/SearchJobs/security?3_78_3=1073&locationLocationsCode=hyderabad',
+  'Fortinet':           'https://www.fortinet.com/corporate/about-us/careers?search=security&location=India',
+  'Secureworks':        'https://www.secureworks.com/about/careers#positions',
+  'NICE Systems':       'https://www.nice.com/about/careers/job-openings',
+  'SAP':                'https://jobs.sap.com/search/?q=security&location=Hyderabad',
+  'Adobe':              'https://careers.adobe.com/us/en/search-results?keywords=security&location=Hyderabad',
+  'VMware / Broadcom':  'https://careers.broadcom.com/jobs?q=security&location=Hyderabad',
+  'Nvidia':             'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/jobs?q=security&locations=Hyderabad',
+  'Capgemini':          'https://www.capgemini.com/in-en/jobs/?search_term=security&country=India&city=Hyderabad',
+  'Infosys BPM':        'https://career.infosys.com/joblist#SearchKey=information+security&Location=Hyderabad',
+  'Wipro':              'https://careers.wipro.com/careers-home/jobs?tags3=Hyderabad&keyword=security',
+  'HCL Technologies':   'https://www.hcltech.com/careers?location=Hyderabad&keyword=security',
+  'Cognizant':          'https://careers.cognizant.com/global/en/search-results?keywords=security&location=Hyderabad',
+  'TCS':                'https://ibegin.tcs.com/iBegin/jobs/search?q=security&location=Hyderabad',
+  'Sonatype':           'https://www.sonatype.com/company/careers',
+  'Pegasystems':        'https://www.pega.com/about/careers/job-listings?field_job_country_value[]=india&combine=security',
+  'T-Mobile GCC':       'https://careers.t-mobile.com/search-jobs/security/Hyderabad/34378/1',
+  'Vanguard':           'https://www.vanguardjobs.com/search-jobs/?keyword=security&location=Hyderabad',
+  'Franklin Templeton': 'https://franklintempleton.wd5.myworkdayjobs.com/en-US/FT_External_Career_Site/jobs?q=security',
+  'State Street':       'https://statestreet.com/content/statestreet/us/en/about/careers/search-jobs.html#q=security&location=Hyderabad',
+  'MetLife':            'https://jobs.metlife.com/search-jobs/security/Hyderabad/18/en-US',
+  'Swiss Re':           'https://swissre.wd3.myworkdayjobs.com/en-US/Swissre/jobs?q=security',
+  'Citi':               'https://jobs.citi.com/search-jobs/security/Hyderabad/287',
+  'Barclays':           'https://search.jobs.barclays/search?q=security&location=Hyderabad',
+  'Deutsche Bank':      'https://careers.db.com/search-results?keywords=security&location=Hyderabad',
+  'Novartis':           'https://www.novartis.com/careers/career-search#location=Hyderabad&keyword=security',
+  'AstraZeneca':        'https://careers.astrazeneca.com/search-jobs?q=security&l=Hyderabad',
+  'Sanofi':             'https://www.sanofi.com/en/careers/search-jobs#location=Hyderabad&keyword=security',
+  'Eli Lilly':          'https://careers.lilly.com/search-jobs?q=security&l=Hyderabad',
+  'Roche':              'https://www.roche.com/careers/jobs.htm#section=joblist&location=Hyderabad&query=security',
+  'HCA Healthcare':     'https://careers.hcahealthcare.com/jobs?q=security&l=Hyderabad',
+  'Cohere Health':      'https://coherehealth.com/careers/',
+  'Lonza Group':        'https://www.lonza.com/careers',
+  'ABB':                'https://careers.abb/global/en/search-results?keywords=security&location=Hyderabad',
+  'Honeywell':          'https://careers.honeywell.com/us/en/search-results?keywords=security&location=Hyderabad',
+  'Bosch':              'https://www.bosch.com/careers/find-your-job/?country=india&query=security&location=Hyderabad',
+  'ArcelorMittal':      'https://careers.arcelormittal.com/search?q=security&location=Hyderabad',
+  'Sonoco Products':    'https://sonoco.com/careers',
+  'McDonald\'s GCC':    'https://corporate.mcdonalds.com/corpmcd/Careers.html',
+  'Walmart Global Tech':'https://careers.walmart.com/results?q=security&jobCity=Hyderabad',
+  'Target India':       'https://jobs.target.com/search-jobs/security/India/1479',
+  'Tesco GCC':          'https://www.tesco-careers.com/search/?q=security&l=Hyderabad',
+  'Marriott GCC':       'https://jobs.marriott.com/marriott/jobs?keywords=security&location=Hyderabad',
+  'Deloitte':           'https://apply.deloitte.com/careers/SearchJobs/security?3_60_3=1006905',
+  'PwC':                'https://www.pwc.in/careers/current-opportunities/search.html?q=security&location=Hyderabad',
+  'EY':                 'https://eyglobal.yello.co/external/requisitions?page=1&query=security',
+  'KPMG':               'https://kpmgcareers.kpmg.com/global/en/search-results.html?keyword=security&location=Hyderabad',
+  'Accenture':          'https://www.accenture.com/in-en/careers/jobsearch?jk=security&jl=Hyderabad',
+  'Shell':              'https://www.shell.com/careers/search-jobs.html?q=security&country=India&city=Hyderabad',
+  'BP':                 'https://www.bp.com/en/global/corporate/careers/searching-for-jobs.html?jobFamily=Information+Technology&location=Hyderabad',
+  'DAZN GCC':           'https://www.dazn.com/en-IN/news/other/dazn-careers/',
+  'ManTech':            'https://www.mantech.com/careers/find-a-job/?search=security&location=India',
+};
+
+function getCompanyCareerUrl(companyName) {
+  return COMPANY_CAREER_PAGES[companyName] || ('https://www.linkedin.com/company/' + encodeURIComponent(companyName.toLowerCase().replace(/\s+/g,'-')) + '/jobs/');
+}
+
+function getRoleUrl(company, role) {
+  // Returns null — we now use buildLiveLinks() instead everywhere
+  return null;
+}
+// ── END LIVE JOB SEARCH LINK GENERATOR ───────────────────────
+
+
 // ══════════════════════════════════════════════════════
 //  DATA
 // ══════════════════════════════════════════════════════
@@ -502,7 +619,11 @@ function cardHTML(g){
     </div>
     <div class="card-sector" style="color:${st.color};background:${st.bg}">${g.sector}</div>
     <div class="card-fns">${g.functions}</div>
-    ${roles.length?`<div style="font-size:.75rem;color:var(--mid);margin-bottom:.5rem">🔒 ${roles.join(' · ')}</div>`:''}
+    ${(g.cyberRoles||[]).length?`<div style="font-size:.75rem;color:var(--mid);margin-bottom:.5rem;line-height:2">${(g.cyberRoles||[]).slice(0,3).map(r=>{
+      const liQ=encodeURIComponent(g.name+' '+r);
+      const liUrl=`https://www.linkedin.com/jobs/search/?keywords=${liQ}&location=Hyderabad%2C+Telangana%2C+India&f_TPR=r2592000`;
+      return `<a href="${liUrl}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:.25rem;background:#eef2ff;border:1px solid #c7d7fd;border-radius:4px;padding:.15rem .5rem;margin:.1rem .1rem;font-size:.72rem;color:var(--accent);text-decoration:none;font-weight:500" title="Search LinkedIn for: ${g.name} ${r}">🔒 ${r} <span style='font-size:.65rem'>LI↗</span></a>`;
+    }).join('')}</div>`:''}
     <div class="card-actions">
       <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openModal(${g.id})">View Details</button>
       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();downloadGCCExcel(${g.id})">⬇ Excel</button>
@@ -613,7 +734,25 @@ function openModal(id){
   const st = sectorStyle(g.sector);
   document.getElementById('mTitle').textContent = g.name;
   document.getElementById('mMeta').innerHTML = `<span>📍 ${g.area}</span><span>🌐 ${g.hq}</span><span>Est. ${g.year}</span>`;
-  const roles = (g.cyberRoles||[]).map(r=>`<a class="job-chip" href="${g.url}" target="_blank"><span class="dot"></span>${r}</a>`).join('');
+  const roles = (g.cyberRoles||[]).map(r=>{
+    const links = buildLiveLinks(g.name, r);
+    const liQuery = encodeURIComponent(g.name + ' ' + r);
+    const nkQuery = r.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+    const inQuery = encodeURIComponent(g.name + ' ' + r);
+    const liUrl   = `https://www.linkedin.com/jobs/search/?keywords=${liQuery}&location=Hyderabad%2C+Telangana%2C+India&f_TPR=r2592000&f_C=`;
+    const nkUrl   = `https://www.naukri.com/${nkQuery}-jobs-in-hyderabad?companiesList=${encodeURIComponent(g.name)}`;
+    const inUrl   = `https://in.indeed.com/jobs?q=${inQuery}&l=Hyderabad&fromage=30`;
+    const coUrl   = getCompanyCareerUrl(g.name);
+    return `<div class="role-block">
+      <div class="role-name">🔒 ${r}</div>
+      <div class="role-links">
+        <a href="${liUrl}" target="_blank" class="src-btn src-li" title="Search LinkedIn — live results">LinkedIn</a>
+        <a href="${nkUrl}" target="_blank" class="src-btn src-nk" title="Search Naukri — live results">Naukri</a>
+        <a href="${inUrl}" target="_blank" class="src-btn src-in" title="Search Indeed — live results">Indeed</a>
+        <a href="${coUrl}" target="_blank" class="src-btn src-co" title="Company careers page">Co. Site</a>
+      </div>
+    </div>`;
+  }).join('');
   document.getElementById('mBody').innerHTML = `
     <div class="modal-grid">
       <div class="mfield"><div class="lbl">Sector</div><div class="val" style="color:${st.color}">${g.sector}</div></div>
@@ -627,7 +766,7 @@ function openModal(id){
     </div>
     <div class="mfield" style="margin-bottom:.75rem"><div class="lbl">Key Functions</div><div class="val" style="font-weight:400;font-size:.88rem;line-height:1.5">${g.functions}</div></div>
     ${g.tools?`<div class="mfield" style="margin-bottom:1rem"><div class="lbl">Security Tools / Stack</div><div class="val" style="font-weight:400;font-size:.85rem;color:var(--mid)">${g.tools}</div></div>`:''}
-    ${roles?`<div class="jobs-section"><h3>🔒 Cybersecurity Openings <span style="font-size:.78rem;font-weight:400;color:var(--mid)">(click to apply)</span></h3><div>${roles}</div></div>`:''}
+    ${roles?`<div class="jobs-section"><h3>🔒 Cybersecurity Openings <span style="font-size:.78rem;font-weight:400;color:var(--mid)">— Live search links (LinkedIn · Naukri · Indeed · Co. Site)</span></h3><div>${roles}</div></div>`:''}
     <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line);display:flex;gap:.5rem;flex-wrap:wrap">
       <a href="${g.url}" target="_blank" class="btn btn-primary" style="text-decoration:none">Apply at ${g.name} →</a>
       <button class="btn btn-outline" onclick="downloadGCCExcel(${g.id})">⬇ Download Excel</button>
@@ -656,7 +795,7 @@ function downloadGCCExcel(id){
   ws1['!cols'] = [{wch:25},{wch:60}];
   XLSX.utils.book_append_sheet(wb, ws1, 'Company Overview');
   if(g.cyberRoles && g.cyberRoles.length){
-    const roleRows = [['#','Cyber Role','Careers Link'],...g.cyberRoles.map((r,i)=>[i+1,r,g.url])];
+    const roleRows = [['#','Cyber Role','Direct Job Search URL','Company Careers Page'],...g.cyberRoles.map((r,i)=>[i+1,r,getRoleUrl(g.name,r)||g.url,g.url])];
     const ws2 = XLSX.utils.aoa_to_sheet(roleRows);
     ws2['!cols'] = [{wch:5},{wch:45},{wch:55}];
     XLSX.utils.book_append_sheet(wb, ws2, 'Cybersecurity Openings');
