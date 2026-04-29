@@ -1504,18 +1504,25 @@ function renderTpl3(d){
 }
 
 // ── AI CALLS (Claude API) ─────────────────────────────────────
+const GEMINI_KEY = 'AIzaSyB-pKKYg64rKRGWICYhmdvtS3E0XCQaqvc';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+
 async function callClaude(prompt){
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  // Using Google Gemini 1.5 Flash (free tier)
+  const r = await fetch(GEMINI_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model:      "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages:   [{ role: "user", content: prompt }]
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature:     0.7,
+        maxOutputTokens: 1000,
+      }
     })
   });
   const data = await r.json();
-  return data.content?.[0]?.text || '';
+  if (data.error) throw new Error(data.error.message);
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 async function aiImproveSummary(){
