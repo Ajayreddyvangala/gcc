@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Resume Builder — GCC Intelligence Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp }                from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc,
+         setDoc, serverTimestamp }      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyBWWGAwVJa5TeUVAeL4C36zxX8aOKLQotA",
+  authDomain:        "gcc-ee295.firebaseapp.com",
+  projectId:         "gcc-ee295",
+  storageBucket:     "gcc-ee295.firebasestorage.app",
+  messagingSenderId: "252355742097",
+  appId:             "1:252355742097:web:0701ee134c68b34cfef230"
+};
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+onAuthStateChanged(auth, async user => {
+  window._user = user;
+  if (user) {
+    hideSignupWall();
+    const ref  = doc(db, 'users', user.uid);
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? snap.data() : {};
+    window._isPremium = data.resumePremium === true;
+    updatePremiumUI();
+    // Pre-fill name/email from Firebase
+    const nameEl  = document.getElementById('f_name');
+    const emailEl = document.getElementById('f_email');
+    if (nameEl  && !nameEl.value  && user.displayName) nameEl.value  = user.displayName;
+    if (emailEl && !emailEl.value && user.email)        emailEl.value = user.email;
+  } else {
+    showSignupWall();
+  }
+});
+
+window._unlockPremium = async () => {
+  if (!window._user) return;
+  const ref = doc(db, 'users', window._user.uid);
+  await setDoc(ref, { resumePremium: true, premiumAt: serverTimestamp() }, { merge: true });
+  window._isPremium = true;
+  updatePremiumUI();
+  toast('🎉 Premium unlocked!', 'success');
+};
+</script>
+
+<style>
+:root {
+  --ink:     #0f0f0f;
+  --ink2:    #1a1a2e;
+  --mid:     #555;
+  --soft:    #999;
+  --line:    #e8e8e8;
+  --bg:      #fafaf8;
+  --card:    #ffffff;
+  --gold:    #b8860b;
+  --gold-lt: #fdf8ee;
+  --gold-bd: #e8d08a;
+  --blue:    #1a3a8f;
+  --blue-lt: #eef2ff;
+  --green:   #166534;
+  --red:     #991b1b;
+  --radius:  10px;
+  --shadow:  0 2px 12px rgba(0,0,0,.07);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.12);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── TOP NAV ─────────────────────────────────────────────── */
+.topnav {
+  background: var(--ink2);
+  padding: 0 28px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-logo {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-logo-badge {
+  background: var(--gold);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: .04em;
+}
+.nav-back {
+  font-size: 13px;
+  color: rgba(255,255,255,.6);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: .15s;
+}
+.nav-back:hover { color: #fff; }
+
+/* ── HERO ─────────────────────────────────────────────────── */
+.hero {
+  background: linear-gradient(135deg, var(--ink2) 0%, #0d2255 100%);
+  padding: 52px 28px 40px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 70% 50%, rgba(184,134,11,.15) 0%, transparent 60%);
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(184,134,11,.2);
+  border: 1px solid rgba(184,134,11,.4);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8c44a;
+  letter-spacing: .05em;
+  margin-bottom: 18px;
+}
+.hero h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  color: #fff;
+  line-height: 1.15;
+  margin-bottom: 14px;
+  position: relative;
+}
+.hero h1 em {
+  font-style: italic;
+  color: #e8c44a;
+}
+.hero p {
+  color: rgba(255,255,255,.65);
+  font-size: 15px;
+  max-width: 520px;
+  margin: 0 auto 28px;
+  line-height: 1.6;
+  position: relative;
+}
+
+/* tier cards */
+.tier-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  position: relative;
+}
+.tier-card {
+  background: rgba(255,255,255,.06);
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  padding: 20px 24px;
+  text-align: left;
+  min-width: 220px;
+  max-width: 240px;
+  transition: .2s;
+}
+.tier-card.gold {
+  background: rgba(184,134,11,.12);
+  border-color: rgba(184,134,11,.4);
+}
+.tier-card:hover { border-color: rgba(255,255,255,.3); }
+.tier-card.gold:hover { border-color: rgba(184,134,11,.7); }
+.tier-price {
+  font-family: 'DM Serif Display', serif;
+  font-size: 2rem;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.tier-price span { font-size: 14px; font-family: 'Inter', sans-serif; font-weight: 400; color: rgba(255,255,255,.5); }
+.tier-price.gold-price { color: #e8c44a; }
+.tier-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.5);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.tier-features { list-style: none; }
+.tier-features li {
+  font-size: 12px;
+  color: rgba(255,255,255,.7);
+  padding: 3px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  line-height: 1.4;
+}
+.tier-features li::before { content: '✓'; color: #4ade80; flex-shrink: 0; font-size: 11px; margin-top: 1px; }
+.tier-features.gold-features li { color: rgba(255,255,255,.85); }
+.tier-features.gold-features li::before { content: '✦'; color: #e8c44a; }
+
+/* ── MAIN LAYOUT ──────────────────────────────────────────── */
+.main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* ── BUILDER PANEL ────────────────────────────────────────── */
+.builder-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  position: sticky;
+  top: 70px;
+}
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: #fafafa;
+}
+.ptab {
+  flex: 1;
+  padding: 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  color: var(--soft);
+  transition: .15s;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  letter-spacing: .02em;
+}
+.ptab:hover { color: var(--ink); }
+.ptab.active { color: var(--blue); border-bottom-color: var(--blue); background: #fff; }
+.ptab.done { color: #16a34a; }
+.ptab.done::after { content: ' ✓'; }
+
+.panel-body {
+  padding: 20px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+/* form elements */
+.field-group { margin-bottom: 14px; }
+.field-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mid);
+  margin-bottom: 5px;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.field-group input,
+.field-group textarea,
+.field-group select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  color: var(--ink);
+  background: #fafafa;
+  outline: none;
+  transition: .15s;
+  resize: vertical;
+}
+.field-group input:focus,
+.field-group textarea:focus,
+.field-group select:focus {
+  border-color: var(--blue);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(26,58,143,.08);
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 14px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title .step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* experience blocks */
+.exp-block {
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  position: relative;
+  background: #fafaf8;
+}
+.exp-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.exp-block-head span { font-size: 12px; font-weight: 600; color: var(--ink); }
+.btn-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--soft);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px;
+  transition: .15s;
+}
+.btn-remove:hover { color: var(--red); }
+
+/* AI enhance button */
+.btn-ai {
+  width: 100%;
+  padding: 8px;
+  border: 1.5px dashed rgba(26,58,143,.3);
+  border-radius: 8px;
+  background: var(--blue-lt);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: 'Inter', sans-serif;
+  margin-top: 6px;
+}
+.btn-ai:hover { background: #dce8ff; border-color: var(--blue); }
+.btn-ai:disabled { opacity: .5; cursor: default; }
+.btn-ai.loading { animation: pulse-ai 1s infinite; }
+@keyframes pulse-ai { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+/* action buttons */
+.btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: .15s;
+  font-family: 'Inter', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: #152d75; }
+.btn-gold { background: var(--gold); color: #fff; }
+.btn-gold:hover { background: #9a7209; }
+.btn-outline { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+.btn-outline:hover { border-color: #999; }
+.btn-green-solid { background: #16a34a; color: #fff; }
+.btn-green-solid:hover { background: #15803d; }
+.btn-full { width: 100%; justify-content: center; }
+.btn-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+/* progress bar */
+.progress-bar {
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), #4f7cff);
+  border-radius: 2px;
+  transition: width .4s;
+}
+
+/* tab sections */
+.tab-section { display: none; }
+.tab-section.active { display: block; }
+
+/* ── PREVIEW PANEL ────────────────────────────────────────── */
+.preview-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.preview-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fafafa;
+}
+.preview-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.template-switch {
+  display: flex;
+  gap: 6px;
+}
+.tpl-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--soft);
+  transition: .15s;
+}
+.tpl-btn:hover, .tpl-btn.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--blue-lt);
+}
+.tpl-btn.premium-tpl {
+  position: relative;
+}
+.tpl-btn.premium-tpl::after {
+  content: '₹';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #fff;
+  font-size: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-body {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+/* ── RESUME TEMPLATES ─────────────────────────────────────── */
+.resume-wrapper {
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,.1);
+  border-radius: 4px;
+  max-width: 680px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+/* Template 1 — Clean Classic (Free) */
+.tpl-1 { padding: 40px 44px; font-family: 'Inter', sans-serif; }
+.tpl-1 .r-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+.tpl-1 .r-title {
+  font-size: 13px;
+  color: var(--blue);
+  font-weight: 600;
+  letter-spacing: .04em;
+  margin-bottom: 10px;
+}
+.tpl-1 .r-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--mid);
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+.tpl-1 .r-contact span { display: flex; align-items: center; gap: 4px; }
+.tpl-1 .r-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  border-bottom: 1px solid var(--blue);
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+  margin-top: 16px;
+}
+.tpl-1 .r-summary { font-size: 12px; color: var(--mid); line-height: 1.6; }
+.tpl-1 .r-exp-item { margin-bottom: 14px; }
+.tpl-1 .r-exp-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+.tpl-1 .r-exp-company { font-size: 13px; font-weight: 600; color: var(--ink); }
+.tpl-1 .r-exp-dates { font-size: 11px; color: var(--soft); font-family: 'JetBrains Mono', monospace; }
+.tpl-1 .r-exp-role { font-size: 12px; color: var(--blue); font-weight: 500; margin-bottom: 4px; }
+.tpl-1 .r-exp-bullets { padding-left: 14px; }
+.tpl-1 .r-exp-bullets li { font-size: 11.5px; color: var(--mid); line-height: 1.5; margin-bottom: 2px; }
+.tpl-1 .r-skills { display: flex; flex-wrap: wrap; gap: 5px; }
+.tpl-1 .r-skill {
+  background: var(--blue-lt);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 3px;
+}
+.tpl-1 .r-edu-item { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.tpl-1 .r-edu-deg { font-size: 12px; font-weight: 600; color: var(--ink); }
+.tpl-1 .r-edu-school { font-size: 11px; color: var(--mid); }
+.tpl-1 .r-edu-year { font-size: 11px; color: var(--soft); font-family: 'JetBrains Mono', monospace; }
+.tpl-1 .r-cert { font-size: 11.5px; color: var(--mid); padding: 2px 0; }
+
+/* Template 2 — Executive Two-Column (Premium) */
+.tpl-2 { display: grid; grid-template-columns: 200px 1fr; min-height: 400px; }
+.tpl-2 .r-sidebar {
+  background: var(--ink2);
+  padding: 32px 20px;
+  color: rgba(255,255,255,.85);
+}
+.tpl-2 .r-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Serif Display', serif;
+  font-size: 26px;
+  color: #fff;
+  margin: 0 auto 14px;
+}
+.tpl-2 .r-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.tpl-2 .r-title {
+  font-size: 10px;
+  color: #e8c44a;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.tpl-2 .s-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #e8c44a;
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+.tpl-2 .s-contact-item {
+  font-size: 10px;
+  color: rgba(255,255,255,.7);
+  margin-bottom: 5px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.tpl-2 .s-skill {
+  background: rgba(255,255,255,.1);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,.85);
+  margin: 2px 0;
+  display: block;
+}
+.tpl-2 .r-main { padding: 32px 28px; }
+.tpl-2 .m-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink2);
+  border-left: 3px solid var(--gold);
+  padding-left: 10px;
+  margin-bottom: 12px;
+  margin-top: 18px;
+}
+.tpl-2 .m-section-title:first-child { margin-top: 0; }
+.tpl-2 .r-summary { font-size: 11.5px; color: var(--mid); line-height: 1.65; }
+.tpl-2 .r-exp-item { margin-bottom: 14px; }
+.tpl-2 .r-exp-head { display: flex; justify-content: space-between; align-items: baseline; }
+.tpl-2 .r-exp-company { font-size: 13px; font-weight: 700; color: var(--ink); }
+.tpl-2 .r-exp-dates { font-size: 10px; color: var(--soft); background: #f0f0f0; padding: 2px 7px; border-radius: 3px; }
+.tpl-2 .r-exp-role { font-size: 11px; color: var(--gold); font-weight: 600; margin: 2px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.tpl-2 .r-exp-bullets { padding-left: 14px; }
+.tpl-2 .r-exp-bullets li { font-size: 11px; color: var(--mid); line-height: 1.5; margin-bottom: 2px; }
+.tpl-2 .r-edu-item { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.tpl-2 .r-edu-deg { font-size: 12px; font-weight: 600; }
+.tpl-2 .r-edu-school { font-size: 11px; color: var(--mid); }
+.tpl-2 .r-edu-year { font-size: 10px; color: var(--soft); }
+
+/* Template 3 — Bold Modern (Premium) */
+.tpl-3 { padding: 0; }
+.tpl-3 .r-header {
+  background: linear-gradient(135deg, #1a3a8f, #0d2255);
+  padding: 36px 44px;
+  position: relative;
+}
+.tpl-3 .r-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: #fff;
+  clip-path: polygon(0 100%, 100% 100%, 100% 0);
+}
+.tpl-3 .r-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 32px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.tpl-3 .r-title {
+  font-size: 13px;
+  color: #e8c44a;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.tpl-3 .r-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 11px;
+  color: rgba(255,255,255,.7);
+}
+.tpl-3 .r-body { padding: 28px 44px 36px; }
+.tpl-3 .r-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 10px;
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tpl-3 .r-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.tpl-3 .r-summary { font-size: 12px; color: var(--mid); line-height: 1.65; }
+.tpl-3 .r-exp-item { margin-bottom: 16px; padding-left: 14px; border-left: 2px solid var(--line); }
+.tpl-3 .r-exp-company { font-size: 13px; font-weight: 700; color: var(--ink); }
+.tpl-3 .r-exp-role { font-size: 12px; color: var(--blue); font-weight: 500; }
+.tpl-3 .r-exp-dates { font-size: 10px; color: var(--soft); font-family: 'JetBrains Mono', monospace; }
+.tpl-3 .r-exp-bullets { padding-left: 14px; margin-top: 4px; }
+.tpl-3 .r-exp-bullets li { font-size: 11.5px; color: var(--mid); line-height: 1.5; margin-bottom: 2px; }
+.tpl-3 .r-skills { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-3 .r-skill {
+  background: var(--ink2);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+.tpl-3 .r-edu-item { margin-bottom: 6px; }
+.tpl-3 .r-edu-deg { font-size: 12px; font-weight: 600; color: var(--ink); }
+.tpl-3 .r-edu-school { font-size: 11px; color: var(--mid); }
+
+/* ── PREMIUM GATE ─────────────────────────────────────────── */
+.premium-gate {
+  background: linear-gradient(135deg, var(--gold-lt), #fff8e6);
+  border: 1.5px solid var(--gold-bd);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  margin: 12px 0;
+}
+.premium-gate .pg-icon { font-size: 28px; margin-bottom: 8px; }
+.premium-gate h4 { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.premium-gate p { font-size: 12px; color: var(--mid); line-height: 1.5; margin-bottom: 14px; }
+.premium-price-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gold);
+  color: #fff;
+  border-radius: 20px;
+  padding: 4px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+.premium-price-badge .original {
+  text-decoration: line-through;
+  opacity: .6;
+  font-size: 12px;
+  font-weight: 400;
+}
+.offer-badge {
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ── SIGNUP WALL ──────────────────────────────────────────── */
+#signupWall {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.8);
+  z-index: 400;
+  backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#signupWall.open { display: flex; }
+.sw-box {
+  background: #fff;
+  border-radius: 18px;
+  max-width: 440px;
+  width: 100%;
+  padding: 36px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.sw-icon { font-size: 36px; margin-bottom: 14px; }
+.sw-box h2 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.sw-box p { font-size: 13px; color: var(--mid); line-height: 1.6; margin-bottom: 20px; }
+.sw-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  margin-bottom: 10px;
+  outline: none;
+  transition: .15s;
+}
+.sw-input:focus { border-color: var(--blue); }
+.sw-err { font-size: 12px; color: #b91c1c; margin-bottom: 8px; display: none; }
+.sw-ok  { font-size: 12px; color: #15803d; margin-bottom: 8px; display: none; }
+.sw-divider { display: flex; align-items: center; gap: 10px; color: var(--soft); font-size: 12px; margin: 12px 0; }
+.sw-divider::before, .sw-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.sw-link { font-size: 12px; color: var(--blue); cursor: pointer; background: none; border: none; font-family: 'Inter', sans-serif; }
+.sw-bottom { margin-top: 16px; font-size: 12px; color: var(--soft); }
+.sw-tabs { display: flex; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; }
+.sw-tab {
+  flex: 1;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  color: var(--soft);
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -1.5px;
+  transition: .15s;
+}
+.sw-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ── AI OUTPUT ────────────────────────────────────────────── */
+.ai-output {
+  background: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: #1e40af;
+  line-height: 1.6;
+  margin-top: 8px;
+  display: none;
+}
+.ai-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.ai-score .score-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #16a34a;
+  font-family: 'DM Serif Display', serif;
+}
+.ai-score .score-label { font-size: 12px; color: #15803d; }
+.ai-feedback { font-size: 12px; color: var(--mid); line-height: 1.6; }
+.ai-feedback ul { padding-left: 16px; }
+.ai-feedback li { margin-bottom: 4px; }
+
+/* ── TOAST ────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--ink);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 999;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: .3s;
+  box-shadow: var(--shadow-lg);
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { background: #15803d; }
+.toast.error { background: #991b1b; }
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .builder-panel { position: static; }
+  .preview-body { max-height: 500px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="topnav">
+  <a class="nav-logo" href="index.html">
+    GCC Intelligence Hub
+    <span class="nav-logo-badge">AI</span>
+  </a>
+  <a class="nav-back" href="index.html">← Back to Dashboard</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-tag">✦ Powered by Claude AI</div>
+  <h1>Build Your <em>Perfect Resume</em><br>for GCC Roles</h1>
+  <p>AI-powered resume builder designed for Information Security, IAM and Cybersecurity professionals targeting GCC roles in Hyderabad &amp; Bengaluru.</p>
+  <div class="tier-row">
+    <div class="tier-card">
+      <div class="tier-price">Free <span>/always</span></div>
+      <div class="tier-label">Standard</div>
+      <ul class="tier-features">
+        <li>1 professional template</li>
+        <li>AI bullet point improvement</li>
+        <li>ATS keyword check</li>
+        <li>PDF download</li>
+        <li>Unlimited edits</li>
+      </ul>
+    </div>
+    <div class="tier-card gold">
+      <div class="tier-price gold-price">₹100 <span>/one-time</span></div>
+      <div class="tier-label">Premium ✦</div>
+      <ul class="tier-features gold-features">
+        <li>3 premium templates</li>
+        <li>Full AI resume rewrite</li>
+        <li>Executive summary AI</li>
+        <li>Cover letter generator</li>
+        <li>LinkedIn summary</li>
+        <li>PDF + Word download</li>
+        <li>Priority ATS optimisation</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- BUILDER PANEL -->
+  <div class="builder-panel">
+    <div class="panel-tabs">
+      <div class="ptab active" onclick="switchTab(0,this)" id="tab0">Contact</div>
+      <div class="ptab" onclick="switchTab(1,this)" id="tab1">Summary</div>
+      <div class="ptab" onclick="switchTab(2,this)" id="tab2">Experience</div>
+      <div class="ptab" onclick="switchTab(3,this)" id="tab3">Education</div>
+      <div class="ptab" onclick="switchTab(4,this)" id="tab4">Skills</div>
+    </div>
+    <div class="panel-body">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:20%"></div></div>
+
+      <!-- TAB 0 — Contact -->
+      <div class="tab-section active" id="ts0">
+        <div class="section-title"><span class="step-num">1</span> Personal Details</div>
+        <div class="field-group">
+          <label>Full Name</label>
+          <input type="text" id="f_name" placeholder="e.g. Rajesh Kumar" oninput="renderPreview()">
+        </div>
+        <div class="field-group">
+          <label>Job Title / Role Target</label>
+          <input type="text" id="f_title" placeholder="e.g. Information Security Manager" oninput="renderPreview()">
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Email</label>
+            <input type="email" id="f_email" placeholder="you@email.com" oninput="renderPreview()">
+          </div>
+          <div class="field-group">
+            <label>Phone</label>
+            <input type="tel" id="f_phone" placeholder="+91 98765 43210" oninput="renderPreview()">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Location</label>
+            <input type="text" id="f_location" placeholder="Hyderabad, India" oninput="renderPreview()">
+          </div>
+          <div class="field-group">
+            <label>LinkedIn</label>
+            <input type="text" id="f_linkedin" placeholder="linkedin.com/in/you" oninput="renderPreview()">
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Years of Experience</label>
+          <select id="f_exp_yrs" onchange="renderPreview()">
+            <option value="">Select</option>
+            <option>2–4 years</option>
+            <option>5–7 years</option>
+            <option>8–10 years</option>
+            <option>10–15 years</option>
+            <option>15+ years</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-full" onclick="switchTab(1,document.getElementById('tab1'))">Next: Summary →</button>
+        </div>
+      </div>
+
+      <!-- TAB 1 — Summary -->
+      <div class="tab-section" id="ts1">
+        <div class="section-title"><span class="step-num">2</span> Professional Summary</div>
+        <div class="field-group">
+          <label>Write a brief summary</label>
+          <textarea id="f_summary" rows="5" placeholder="e.g. Results-driven Information Security Manager with 10+ years experience..." oninput="renderPreview()"></textarea>
+        </div>
+        <button class="btn-ai" onclick="aiImproveSummary()" id="btnAiSummary">
+          ✦ AI: Write / Improve my Summary
+        </button>
+        <div class="ai-output" id="aiSummaryOutput"></div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="switchTab(0,document.getElementById('tab0'))">← Back</button>
+          <button class="btn btn-primary" onclick="switchTab(2,document.getElementById('tab2'))">Next: Experience →</button>
+        </div>
+      </div>
+
+      <!-- TAB 2 — Experience -->
+      <div class="tab-section" id="ts2">
+        <div class="section-title"><span class="step-num">3</span> Work Experience</div>
+        <div id="expContainer"></div>
+        <button class="btn btn-outline btn-full" onclick="addExp()" style="margin-bottom:12px">+ Add Experience</button>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="switchTab(1,document.getElementById('tab1'))">← Back</button>
+          <button class="btn btn-primary" onclick="switchTab(3,document.getElementById('tab3'))">Next: Education →</button>
+        </div>
+      </div>
+
+      <!-- TAB 3 — Education -->
+      <div class="tab-section" id="ts3">
+        <div class="section-title"><span class="step-num">4</span> Education</div>
+        <div id="eduContainer"></div>
+        <button class="btn btn-outline btn-full" onclick="addEdu()" style="margin-bottom:12px">+ Add Education</button>
+        <div class="section-title" style="margin-top:18px"><span class="step-num">5</span> Certifications</div>
+        <div class="field-group">
+          <label>Certifications (one per line)</label>
+          <textarea id="f_certs" rows="4" placeholder="CISSP — ISC2&#10;CISM — ISACA&#10;CEH — EC-Council&#10;ISO 27001 Lead Auditor" oninput="renderPreview()"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="switchTab(2,document.getElementById('tab2'))">← Back</button>
+          <button class="btn btn-primary" onclick="switchTab(4,document.getElementById('tab4'))">Next: Skills →</button>
+        </div>
+      </div>
+
+      <!-- TAB 4 — Skills + Actions -->
+      <div class="tab-section" id="ts4">
+        <div class="section-title"><span class="step-num">6</span> Skills &amp; Tools</div>
+        <div class="field-group">
+          <label>Technical Skills (comma separated)</label>
+          <textarea id="f_skills" rows="3" placeholder="PING Identity, Azure AD, GCP Security, Endpoint Security, SIEM, IAM, Zero Trust, CrowdStrike" oninput="renderPreview()"></textarea>
+        </div>
+
+        <!-- AI Full Review -->
+        <div style="margin-top:16px">
+          <button class="btn-ai" onclick="aiFullReview()" id="btnFullReview">
+            ✦ AI: Full Resume Review &amp; ATS Score
+          </button>
+          <div class="ai-output" id="aiReviewOutput"></div>
+        </div>
+
+        <!-- Download free -->
+        <div style="margin-top:16px">
+          <button class="btn btn-green-solid btn-full" onclick="downloadPDF()">
+            ⬇ Download PDF (Free)
+          </button>
+        </div>
+
+        <!-- Premium section -->
+        <div id="premiumSection" style="margin-top:16px"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="switchTab(3,document.getElementById('tab3'))">← Back</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PREVIEW PANEL -->
+  <div class="preview-panel">
+    <div class="preview-header">
+      <h3>📄 Live Preview</h3>
+      <div class="template-switch">
+        <button class="tpl-btn active" onclick="setTemplate(1,this)" title="Clean Classic (Free)">T1</button>
+        <button class="tpl-btn premium-tpl" onclick="setTemplate(2,this)" title="Executive Two-Column (Premium)">T2</button>
+        <button class="tpl-btn premium-tpl" onclick="setTemplate(3,this)" title="Bold Modern (Premium)">T3</button>
+      </div>
+    </div>
+    <div class="preview-body">
+      <div class="resume-wrapper" id="resumeWrapper">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- SIGNUP WALL -->
+<div id="signupWall">
+  <div class="sw-box">
+    <div class="sw-icon">📄</div>
+    <h2>Sign in to build your resume</h2>
+    <p>Create a free account to access the AI Resume Builder. Your resume is saved and accessible anytime.</p>
+    <div class="sw-tabs">
+      <div class="sw-tab active" id="swTabSU" onclick="swMode('signup')">Sign Up Free</div>
+      <div class="sw-tab" id="swTabSI" onclick="swMode('signin')">Sign In</div>
+    </div>
+    <div id="swSignupForm">
+      <input class="sw-input" type="text"     id="sw_name"  placeholder="Full name">
+      <input class="sw-input" type="email"    id="sw_email" placeholder="Email address">
+      <input class="sw-input" type="password" id="sw_pass"  placeholder="Password (min 6 chars)"
+             onkeydown="if(event.key==='Enter')doSWSignup()">
+      <div class="sw-err" id="swErr"></div>
+      <div class="sw-ok"  id="swOk"></div>
+      <button class="btn btn-primary btn-full" onclick="doSWSignup()">Create Free Account →</button>
+      <div class="sw-divider">or</div>
+      <button class="btn btn-outline btn-full" onclick="window._signInGoogle&&window._signInGoogle()">🇬 Continue with Google</button>
+    </div>
+    <div id="swSigninForm" style="display:none">
+      <input class="sw-input" type="email"    id="sw_si_email" placeholder="Email address">
+      <input class="sw-input" type="password" id="sw_si_pass"  placeholder="Password"
+             onkeydown="if(event.key==='Enter')doSWSignin()">
+      <div class="sw-err" id="swErrSI"></div>
+      <button class="sw-link" onclick="doSWForgot()" style="display:block;text-align:right;margin-bottom:8px">Forgot password?</button>
+      <button class="btn btn-primary btn-full" onclick="doSWSignin()">Sign In →</button>
+      <div class="sw-divider">or</div>
+      <button class="btn btn-outline btn-full" onclick="window._signInGoogle&&window._signInGoogle()">🇬 Continue with Google</button>
+    </div>
+    <div class="sw-bottom">By signing up you agree to use this tool responsibly.</div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- Firebase Auth helpers (reuse from main site) -->
+<script type="module">
+import { getAuth, signInWithEmailAndPassword,
+         createUserWithEmailAndPassword,
+         sendPasswordResetEmail,
+         updateProfile,
+         GoogleAuthProvider, signInWithPopup }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+
+const auth = getAuth(getApp());
+const gp   = new GoogleAuthProvider();
+
+function authErr(err){
+  const m={
+    'auth/wrong-password':'Incorrect password.',
+    'auth/invalid-credential':'Incorrect email or password.',
+    'auth/email-already-in-use':'Account already exists.',
+    'auth/weak-password':'Password must be 6+ characters.',
+    'auth/invalid-email':'Invalid email address.',
+    'auth/popup-closed-by-user':'Cancelled.',
+    'auth/too-many-requests':'Too many attempts. Try later.',
+  };
+  return m[err.code]||'Something went wrong.';
+}
+
+window._signInGoogle = async()=>{
+  try{ await signInWithPopup(auth,gp); }
+  catch(e){ setSwErr(authErr(e)); }
+};
+
+window._doSWSignup = async(n,e,p)=>{
+  try{
+    const c = await createUserWithEmailAndPassword(auth,e,p);
+    await updateProfile(c.user,{displayName:n});
+  }catch(err){ setSwErr(authErr(err)); }
+};
+
+window._doSWSignin = async(e,p)=>{
+  try{ await signInWithEmailAndPassword(auth,e,p); }
+  catch(err){ setSwErrSI(authErr(err)); }
+};
+
+window._forgotPass = async(e)=>{
+  try{ await sendPasswordResetEmail(auth,e); setSwOk('Reset email sent!'); }
+  catch(err){ setSwErrSI(authErr(err)); }
+};
+</script>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────
+let currentTemplate = 1;
+let currentTab      = 0;
+let experiences     = [];
+let educations      = [];
+
+// ── SIGNUP WALL ───────────────────────────────────────────────
+function showSignupWall() { document.getElementById('signupWall').classList.add('open'); }
+function hideSignupWall() { document.getElementById('signupWall').classList.remove('open'); }
+function swMode(m){
+  document.getElementById('swTabSU').classList.toggle('active', m==='signup');
+  document.getElementById('swTabSI').classList.toggle('active', m==='signin');
+  document.getElementById('swSignupForm').style.display = m==='signup'?'':'none';
+  document.getElementById('swSigninForm').style.display = m==='signin'?'':'none';
+}
+function setSwErr(msg){
+  const el=document.getElementById('swErr');
+  if(el){el.textContent=msg;el.style.display='block';}
+}
+function setSwErrSI(msg){
+  const el=document.getElementById('swErrSI');
+  if(el){el.textContent=msg;el.style.display='block';}
+}
+function setSwOk(msg){
+  const el=document.getElementById('swOk');
+  if(el){el.textContent=msg;el.style.display='block';}
+}
+function doSWSignup(){
+  const n=document.getElementById('sw_name').value.trim();
+  const e=document.getElementById('sw_email').value.trim();
+  const p=document.getElementById('sw_pass').value;
+  if(!n||!e||!p){setSwErr('Please fill in all fields.');return;}
+  if(p.length<6){setSwErr('Password must be 6+ chars.');return;}
+  if(window._doSWSignup) window._doSWSignup(n,e,p);
+}
+function doSWSignin(){
+  const e=document.getElementById('sw_si_email').value.trim();
+  const p=document.getElementById('sw_si_pass').value;
+  if(!e||!p){setSwErrSI('Please enter email and password.');return;}
+  if(window._doSWSignin) window._doSWSignin(e,p);
+}
+function doSWForgot(){
+  const e=document.getElementById('sw_si_email').value.trim();
+  if(!e){setSwErrSI('Enter your email above first.');return;}
+  if(window._forgotPass) window._forgotPass(e);
+}
+
+// ── TABS ──────────────────────────────────────────────────────
+const TABS = 5;
+function switchTab(n, el){
+  currentTab = n;
+  document.querySelectorAll('.tab-section').forEach((s,i)=>s.classList.toggle('active',i===n));
+  document.querySelectorAll('.ptab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.getElementById('progressFill').style.width = ((n+1)/TABS*100)+'%';
+  renderPreview();
+}
+
+// ── EXPERIENCE ────────────────────────────────────────────────
+function addExp(){
+  const id = Date.now();
+  experiences.push({id, company:'', role:'', from:'', to:'', bullets:''});
+  renderExpBlocks();
+}
+function removeExp(id){
+  experiences = experiences.filter(e=>e.id!==id);
+  renderExpBlocks();
+}
+function renderExpBlocks(){
+  const c = document.getElementById('expContainer');
+  if(!experiences.length){
+    c.innerHTML=`<p style="font-size:12px;color:var(--soft);text-align:center;padding:16px 0">No experience added yet.</p>`;
+    return;
+  }
+  c.innerHTML = experiences.map((exp,idx)=>`
+    <div class="exp-block">
+      <div class="exp-block-head">
+        <span>Experience ${idx+1}</span>
+        <button class="btn-remove" onclick="removeExp(${exp.id})">×</button>
+      </div>
+      <div class="field-group">
+        <label>Company</label>
+        <input type="text" value="${exp.company}" placeholder="e.g. Microsoft"
+          oninput="experiences.find(e=>e.id===${exp.id}).company=this.value;renderPreview()">
+      </div>
+      <div class="field-group">
+        <label>Role / Title</label>
+        <input type="text" value="${exp.role}" placeholder="e.g. Security Manager"
+          oninput="experiences.find(e=>e.id===${exp.id}).role=this.value;renderPreview()">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>From</label>
+          <input type="text" value="${exp.from}" placeholder="Jan 2020"
+            oninput="experiences.find(e=>e.id===${exp.id}).from=this.value;renderPreview()">
+        </div>
+        <div class="field-group">
+          <label>To</label>
+          <input type="text" value="${exp.to}" placeholder="Present"
+            oninput="experiences.find(e=>e.id===${exp.id}).to=this.value;renderPreview()">
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Key Achievements (one per line)</label>
+        <textarea rows="3" placeholder="Led IAM rollout for 5,000 users&#10;Reduced incidents by 40%"
+          oninput="experiences.find(e=>e.id===${exp.id}).bullets=this.value;renderPreview()">${exp.bullets}</textarea>
+      </div>
+      <button class="btn-ai" onclick="aiImproveBullets(${exp.id})" id="btnBullet${exp.id}">
+        ✦ AI: Improve these bullet points
+      </button>
+      <div class="ai-output" id="aiBullet${exp.id}"></div>
+    </div>`).join('');
+}
+
+// ── EDUCATION ─────────────────────────────────────────────────
+function addEdu(){
+  const id = Date.now();
+  educations.push({id, degree:'', school:'', year:''});
+  renderEduBlocks();
+}
+function removeEdu(id){
+  educations = educations.filter(e=>e.id!==id);
+  renderEduBlocks();
+}
+function renderEduBlocks(){
+  const c = document.getElementById('eduContainer');
+  if(!educations.length){
+    c.innerHTML=`<p style="font-size:12px;color:var(--soft);text-align:center;padding:8px 0">No education added yet.</p>`;
+    return;
+  }
+  c.innerHTML = educations.map((edu,idx)=>`
+    <div class="exp-block">
+      <div class="exp-block-head">
+        <span>Education ${idx+1}</span>
+        <button class="btn-remove" onclick="removeEdu(${edu.id})">×</button>
+      </div>
+      <div class="field-group">
+        <label>Degree</label>
+        <input type="text" value="${edu.degree}" placeholder="B.Tech Computer Science"
+          oninput="educations.find(e=>e.id===${edu.id}).degree=this.value;renderPreview()">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Institution</label>
+          <input type="text" value="${edu.school}" placeholder="JNTU Hyderabad"
+            oninput="educations.find(e=>e.id===${edu.id}).school=this.value;renderPreview()">
+        </div>
+        <div class="field-group">
+          <label>Year</label>
+          <input type="text" value="${edu.year}" placeholder="2012"
+            oninput="educations.find(e=>e.id===${edu.id}).year=this.value;renderPreview()">
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── TEMPLATE SWITCHER ─────────────────────────────────────────
+function setTemplate(n, btn){
+  if(n > 1 && !window._isPremium){
+    showPremiumGate();
+    return;
+  }
+  currentTemplate = n;
+  document.querySelectorAll('.tpl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderPreview();
+}
+
+// ── COLLECT FORM DATA ─────────────────────────────────────────
+function getData(){
+  return {
+    name:     v('f_name'),
+    title:    v('f_title'),
+    email:    v('f_email'),
+    phone:    v('f_phone'),
+    location: v('f_location'),
+    linkedin: v('f_linkedin'),
+    expYrs:   v('f_exp_yrs'),
+    summary:  v('f_summary'),
+    skills:   v('f_skills').split(',').map(s=>s.trim()).filter(Boolean),
+    certs:    v('f_certs').split('\n').map(s=>s.trim()).filter(Boolean),
+    experiences,
+    educations,
+  };
+}
+function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+function initials(name){ return name.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?'; }
+
+// ── RENDER PREVIEW ────────────────────────────────────────────
+function renderPreview(){
+  const d = getData();
+  const w = document.getElementById('resumeWrapper');
+  if(currentTemplate===1) w.innerHTML = renderTpl1(d);
+  else if(currentTemplate===2) w.innerHTML = renderTpl2(d);
+  else if(currentTemplate===3) w.innerHTML = renderTpl3(d);
+}
+
+function expHTML_1(d){
+  if(!d.experiences.length) return '<p style="font-size:11px;color:#bbb;font-style:italic">No experience added</p>';
+  return d.experiences.map(e=>`
+    <div class="r-exp-item">
+      <div class="r-exp-head">
+        <span class="r-exp-company">${e.company||'Company'}</span>
+        <span class="r-exp-dates">${e.from||''} ${e.to?'– '+e.to:''}</span>
+      </div>
+      <div class="r-exp-role">${e.role||'Role'}</div>
+      ${e.bullets?`<ul class="r-exp-bullets">${e.bullets.split('\n').filter(b=>b.trim()).map(b=>`<li>${b}</li>`).join('')}</ul>`:''}
+    </div>`).join('');
+}
+
+function renderTpl1(d){
+  return `<div class="tpl-1">
+    <div class="r-name">${d.name||'Your Name'}</div>
+    <div class="r-title">${d.title||'Professional Title'} ${d.expYrs?'· '+d.expYrs:''}</div>
+    <div class="r-contact">
+      ${d.email?`<span>✉ ${d.email}</span>`:''}
+      ${d.phone?`<span>✆ ${d.phone}</span>`:''}
+      ${d.location?`<span>📍 ${d.location}</span>`:''}
+      ${d.linkedin?`<span>🔗 ${d.linkedin}</span>`:''}
+    </div>
+    ${d.summary?`<div class="r-section-title">Professional Summary</div>
+    <div class="r-summary">${d.summary}</div>`:''}
+    <div class="r-section-title">Experience</div>
+    ${expHTML_1(d)}
+    ${d.skills.length?`<div class="r-section-title">Skills &amp; Tools</div>
+    <div class="r-skills">${d.skills.map(s=>`<span class="r-skill">${s}</span>`).join('')}</div>`:''}
+    ${d.educations.length?`<div class="r-section-title">Education</div>
+    ${d.educations.map(e=>`<div class="r-edu-item">
+      <div><div class="r-edu-deg">${e.degree}</div><div class="r-edu-school">${e.school}</div></div>
+      <div class="r-edu-year">${e.year}</div></div>`).join('')}`:''}
+    ${d.certs.length?`<div class="r-section-title">Certifications</div>
+    ${d.certs.map(c=>`<div class="r-cert">✓ ${c}</div>`).join('')}`:''}
+  </div>`;
+}
+
+function renderTpl2(d){
+  return `<div class="tpl-2">
+    <div class="r-sidebar">
+      <div class="r-avatar">${initials(d.name||'YN')}</div>
+      <div class="r-name">${d.name||'Your Name'}</div>
+      <div class="r-title">${d.title||'Professional Title'}</div>
+      <div class="s-section-title">Contact</div>
+      ${d.email?`<div class="s-contact-item">✉ ${d.email}</div>`:''}
+      ${d.phone?`<div class="s-contact-item">✆ ${d.phone}</div>`:''}
+      ${d.location?`<div class="s-contact-item">📍 ${d.location}</div>`:''}
+      ${d.linkedin?`<div class="s-contact-item">🔗 ${d.linkedin}</div>`:''}
+      ${d.expYrs?`<div class="s-section-title">Experience</div><div class="s-contact-item">${d.expYrs}</div>`:''}
+      ${d.skills.length?`<div class="s-section-title">Skills</div>
+      ${d.skills.map(s=>`<span class="s-skill">${s}</span>`).join('')}`:''}
+      ${d.certs.length?`<div class="s-section-title">Certifications</div>
+      ${d.certs.map(c=>`<div class="s-contact-item">✓ ${c}</div>`).join('')}`:''}
+    </div>
+    <div class="r-main">
+      ${d.summary?`<div class="m-section-title">Profile</div>
+      <div class="r-summary">${d.summary}</div>`:''}
+      <div class="m-section-title">Experience</div>
+      ${d.experiences.length?d.experiences.map(e=>`
+        <div class="r-exp-item">
+          <div class="r-exp-head">
+            <span class="r-exp-company">${e.company||'Company'}</span>
+            <span class="r-exp-dates">${e.from||''} ${e.to?'– '+e.to:''}</span>
+          </div>
+          <div class="r-exp-role">${e.role||'Role'}</div>
+          ${e.bullets?`<ul class="r-exp-bullets">${e.bullets.split('\n').filter(b=>b.trim()).map(b=>`<li>${b}</li>`).join('')}</ul>`:''}
+        </div>`).join(''):'<p style="font-size:11px;color:#bbb;font-style:italic">No experience added</p>'}
+      ${d.educations.length?`<div class="m-section-title">Education</div>
+      ${d.educations.map(e=>`<div class="r-edu-item">
+        <div><div class="r-edu-deg">${e.degree}</div><div class="r-edu-school">${e.school}</div></div>
+        <div class="r-edu-year">${e.year}</div></div>`).join('')}`:''}
+    </div>
+  </div>`;
+}
+
+function renderTpl3(d){
+  return `<div class="tpl-3">
+    <div class="r-header">
+      <div class="r-name">${d.name||'Your Name'}</div>
+      <div class="r-title">${d.title||'Professional Title'} ${d.expYrs?'· '+d.expYrs:''}</div>
+      <div class="r-contact">
+        ${d.email?`<span>✉ ${d.email}</span>`:''}
+        ${d.phone?`<span>✆ ${d.phone}</span>`:''}
+        ${d.location?`<span>📍 ${d.location}</span>`:''}
+        ${d.linkedin?`<span>🔗 ${d.linkedin}</span>`:''}
+      </div>
+    </div>
+    <div class="r-body">
+      ${d.summary?`<div class="r-section-title">Summary</div>
+      <div class="r-summary">${d.summary}</div>`:''}
+      <div class="r-section-title">Experience</div>
+      ${d.experiences.length?d.experiences.map(e=>`
+        <div class="r-exp-item">
+          <div class="r-exp-company">${e.company||'Company'}</div>
+          <div class="r-exp-role">${e.role||'Role'}</div>
+          <div class="r-exp-dates">${e.from||''} ${e.to?'– '+e.to:''}</div>
+          ${e.bullets?`<ul class="r-exp-bullets">${e.bullets.split('\n').filter(b=>b.trim()).map(b=>`<li>${b}</li>`).join('')}</ul>`:''}
+        </div>`).join(''):'<p style="font-size:11px;color:#bbb;font-style:italic">No experience added</p>'}
+      ${d.skills.length?`<div class="r-section-title">Skills &amp; Tools</div>
+      <div class="r-skills">${d.skills.map(s=>`<span class="r-skill">${s}</span>`).join('')}</div>`:''}
+      ${d.educations.length?`<div class="r-section-title">Education</div>
+      ${d.educations.map(e=>`<div class="r-edu-item">
+        <div class="r-edu-deg">${e.degree}</div>
+        <div class="r-edu-school">${e.school} ${e.year?'· '+e.year:''}</div>
+      </div>`).join('')}`:''}
+      ${d.certs.length?`<div class="r-section-title">Certifications</div>
+      ${d.certs.map(c=>`<div class="r-cert" style="font-size:11.5px;color:var(--mid);padding:2px 0">✓ ${c}</div>`).join('')}`:''}
+    </div>
+  </div>`;
+}
+
+// ── AI CALLS (Claude API) ─────────────────────────────────────
+async function callClaude(prompt){
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model:      "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      messages:   [{ role: "user", content: prompt }]
+    })
+  });
+  const data = await r.json();
+  return data.content?.[0]?.text || '';
+}
+
+async function aiImproveSummary(){
+  const d    = getData();
+  const btn  = document.getElementById('btnAiSummary');
+  const out  = document.getElementById('aiSummaryOutput');
+  const cur  = v('f_summary');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '✦ Generating…';
+  out.style.display = 'block';
+  out.textContent   = 'Writing your summary…';
+
+  const prompt = `You are an expert resume writer for senior technology professionals targeting GCC (Global Capability Centre) roles in India.
+
+Write a powerful 3-4 sentence professional summary for this candidate:
+- Name: ${d.name||'the candidate'}
+- Target role: ${d.title||'Information Security professional'}
+- Experience: ${d.expYrs||'experienced'}
+- Current summary (improve or write from scratch if blank): ${cur||'none provided'}
+
+Requirements:
+- Tailor for GCC market in Hyderabad/Bengaluru
+- Highlight leadership, global exposure, technical depth
+- Include ATS-friendly keywords naturally
+- No clichés like "passionate" or "dynamic"
+- Professional, confident tone
+- Output ONLY the summary text, no labels or headers`;
+
+  try {
+    const result = await callClaude(prompt);
+    out.textContent = result;
+    // Auto-fill into textarea
+    const ta = document.getElementById('f_summary');
+    if(ta && result){ ta.value = result; renderPreview(); }
+  } catch(e){
+    out.textContent = 'AI unavailable — please write your summary manually.';
+  }
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.innerHTML = '✦ AI: Write / Improve my Summary';
+}
+
+async function aiImproveBullets(expId){
+  const exp  = experiences.find(e=>e.id===expId);
+  if(!exp) return;
+  const btn  = document.getElementById('btnBullet'+expId);
+  const out  = document.getElementById('aiBullet'+expId);
+  if(!btn||!out) return;
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '✦ Improving…';
+  out.style.display = 'block';
+  out.textContent   = 'Rewriting your bullet points…';
+
+  const d = getData();
+  const prompt = `You are an expert resume writer for GCC technology roles in India.
+
+Rewrite these bullet points for a ${exp.role||'professional'} at ${exp.company||'a company'}.
+Target: ${d.title||'senior security role'} in an Indian GCC.
+
+Original bullets:
+${exp.bullets||'No bullets provided — create 3 strong achievement bullets based on the role'}
+
+Requirements:
+- Use STAR format (Situation, Task, Action, Result)
+- Include metrics/numbers where possible
+- Use strong action verbs (Led, Deployed, Reduced, Implemented, Architected)
+- ATS-friendly — include IAM, security, GRC keywords if relevant
+- Output ONLY the improved bullet points, one per line, starting with •
+- Maximum 4 bullets`;
+
+  try {
+    const result = await callClaude(prompt);
+    out.textContent = result;
+    // Auto-apply
+    const blocks = document.querySelectorAll(`#expContainer textarea`);
+    const myBlock = [...blocks].find((_,i)=>experiences[i]?.id===expId);
+    if(myBlock && result){
+      const cleaned = result.replace(/^[•\-\*]\s*/gm,'').trim();
+      myBlock.value = cleaned;
+      exp.bullets = cleaned;
+      renderPreview();
+    }
+  } catch(e){
+    out.textContent = 'AI unavailable — please write manually.';
+  }
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.innerHTML = '✦ AI: Improve these bullet points';
+}
+
+async function aiFullReview(){
+  if(!window._user){ showSignupWall(); return; }
+  const btn = document.getElementById('btnFullReview');
+  const out = document.getElementById('aiReviewOutput');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '✦ Analysing resume…';
+  out.style.display = 'block';
+  out.innerHTML = '<div style="font-size:12px;color:var(--mid)">Running ATS check and review…</div>';
+
+  const d = getData();
+  const resumeText = `
+Name: ${d.name}
+Title: ${d.title}
+Experience: ${d.expYrs}
+Summary: ${d.summary}
+Experience: ${d.experiences.map(e=>`${e.role} at ${e.company} (${e.from}–${e.to}): ${e.bullets}`).join(' | ')}
+Skills: ${d.skills.join(', ')}
+Certifications: ${d.certs.join(', ')}
+  `.trim();
+
+  const prompt = `You are a senior recruiter specialising in GCC technology hires in India (Hyderabad and Bengaluru).
+Review this resume and provide:
+
+1. ATS SCORE: Give a score out of 100 for Information Security / IAM / Cybersecurity GCC roles
+2. TOP 3 STRENGTHS: What's working well
+3. TOP 3 IMPROVEMENTS: What to fix (specific, actionable)
+4. MISSING KEYWORDS: Important keywords missing for GCC security roles
+5. ONE-LINE VERDICT: Would you shortlist this candidate?
+
+Resume:
+${resumeText}
+
+Format your response clearly with these exact sections:
+ATS SCORE: [number]/100
+STRENGTHS:
+- [point 1]
+- [point 2]
+- [point 3]
+IMPROVEMENTS:
+- [point 1]
+- [point 2]
+- [point 3]
+MISSING KEYWORDS: [comma separated list]
+VERDICT: [one line]`;
+
+  try {
+    const result = await callClaude(prompt);
+    // Parse score
+    const scoreMatch = result.match(/ATS SCORE:\s*(\d+)/i);
+    const score = scoreMatch ? parseInt(scoreMatch[1]) : null;
+    const scoreColor = score>=80?'#16a34a':score>=60?'#d97706':'#dc2626';
+
+    out.innerHTML = `
+      ${score!==null?`<div class="ai-score" style="border-color:${scoreColor}20;background:${scoreColor}10">
+        <div class="score-num" style="color:${scoreColor}">${score}</div>
+        <div class="score-label" style="color:${scoreColor}">
+          <strong>ATS Score</strong><br>
+          ${score>=80?'Strong candidate':score>=60?'Good profile':'Needs improvement'}
+        </div>
+      </div>`:''}
+      <div class="ai-feedback"><pre style="white-space:pre-wrap;font-family:Inter,sans-serif;font-size:12px;line-height:1.6">${result}</pre></div>`;
+  } catch(e){
+    out.innerHTML = '<div style="font-size:12px;color:#991b1b">AI review unavailable. Please try again.</div>';
+  }
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.innerHTML = '✦ AI: Full Resume Review &amp; ATS Score';
+}
+
+// ── PREMIUM ───────────────────────────────────────────────────
+function updatePremiumUI(){
+  const sec = document.getElementById('premiumSection');
+  if(!sec) return;
+  if(window._isPremium){
+    sec.innerHTML = `
+      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:18px;margin-bottom:6px">✦</div>
+        <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:4px">Premium Active</div>
+        <div style="font-size:12px;color:#16a34a">You have access to all 3 templates and AI features</div>
+      </div>`;
+  } else {
+    sec.innerHTML = `
+      <div class="premium-gate">
+        <div class="pg-icon">✦</div>
+        <h4>Upgrade to Premium</h4>
+        <p>Unlock 2 more professional templates, full AI resume rewrite, cover letter generator and LinkedIn summary.</p>
+        <div class="premium-price-badge">
+          <span class="original">₹500</span>
+          ₹100
+          <span class="offer-badge">LAUNCH OFFER</span>
+        </div>
+        <br>
+        <button class="btn btn-gold btn-full" onclick="showPaymentModal()">
+          Upgrade for ₹100 →
+        </button>
+        <p style="font-size:11px;color:var(--soft);margin-top:8px">One-time payment · Lifetime access</p>
+      </div>`;
+  }
+}
+
+function showPremiumGate(){
+  updatePremiumUI();
+  // Scroll to premium section
+  const sec = document.getElementById('premiumSection');
+  if(sec) sec.scrollIntoView({behavior:'smooth'});
+  toast('Upgrade to Premium to access this template','');
+}
+
+function showPaymentModal(){
+  // During testing period — unlock immediately (no payment)
+  // TODO: Replace with UPI QR code payment verification
+  if(confirm('🚀 Launch Offer: Premium features are currently FREE during testing!\n\nClick OK to unlock all premium features.')){
+    if(window._unlockPremium) window._unlockPremium();
+    else {
+      window._isPremium = true;
+      updatePremiumUI();
+      toast('🎉 Premium unlocked!','success');
+    }
+  }
+}
+
+// ── DOWNLOAD PDF ──────────────────────────────────────────────
+function downloadPDF(){
+  if(!window._user){ showSignupWall(); return; }
+  const d    = getData();
+  const name = d.name || 'Resume';
+  const w    = document.getElementById('resumeWrapper');
+  if(!w){ toast('Nothing to download','error'); return; }
+
+  // Open print dialog focused on resume
+  const printWin = window.open('','_blank');
+  printWin.document.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>${name} — Resume</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;-webkit-print-color-adjust:exact;color-adjust:exact}
+@page{size:A4;margin:0}
+@media print{body{margin:0}}
+${document.querySelector('style').textContent}
+</style>
+</head><body>
+${w.outerHTML}
+</body></html>`);
+  printWin.document.close();
+  setTimeout(()=>{ printWin.focus(); printWin.print(); }, 800);
+  toast('Opening print dialog — select "Save as PDF"','success');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg, type=''){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `toast show ${type}`;
+  setTimeout(()=>t.className='toast', 3000);
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+  renderExpBlocks();
+  renderEduBlocks();
+  renderPreview();
+  updatePremiumUI();
+  // Add one exp by default
+  addExp();
+  addEdu();
+});
+</script>
+</body>
+</html>
