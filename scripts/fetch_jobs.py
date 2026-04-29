@@ -33,14 +33,47 @@ CITIES = [
 ]
 
 SECURITY_TERMS = [
-    "information security","cybersecurity","cyber security",
-    "identity access","iam","endpoint security","cloud security",
+    # ── Core titles ────────────────────────────────────────────
+    "information security","infosec","info sec",
+    "cybersecurity","cyber security","cyber sec",
     "security engineer","security manager","security architect",
     "security analyst","security lead","security director",
     "security officer","security head","security specialist",
-    "devsecops","appsec","soc analyst","threat intel",
-    "privileged access","zero trust","siem","soc manager",
-    "infosec","network security","application security",
+    "security operations","security consultant","security advisor",
+    "security administrator","security associate",
+    # ── Seniority + Security combos ───────────────────────────
+    "vp security","vp cyber","vp - security","vp - cyber",
+    "director security","director cyber","director - security",
+    "senior director","chief information security",
+    "ciso","deputy ciso","assistant ciso",
+    "head of security","head of cyber","head of information",
+    # ── IAM / Identity ────────────────────────────────────────
+    "identity access","identity & access","iam",
+    "idm","identity management","access management",
+    "privileged access","pam","ping identity","sailpoint",
+    "azure active directory","azure ad","entra id",
+    "single sign-on","sso","federation","forgerock",
+    # ── Cloud & Infra Security ────────────────────────────────
+    "cloud security","endpoint security","network security",
+    "application security","appsec","zero trust",
+    "devsecops","dev sec ops","shift left security",
+    "container security","kubernetes security",
+    # ── GRC / Risk / Compliance ───────────────────────────────
+    "grc","governance risk","risk compliance",
+    "risk management","cyber risk","information risk",
+    "iso 27001","nist","sox compliance","pci dss",
+    "data privacy","data protection","gdpr",
+    # ── SOC / Operations ──────────────────────────────────────
+    "soc analyst","soc manager","soc lead","soc engineer",
+    "security operations","threat intelligence","threat analyst",
+    "threat hunting","incident response","vulnerability",
+    "penetration test","pentest","vapt","red team","blue team",
+    "siem","splunk security","qradar","sentinel",
+    # ── OT / Embedded ─────────────────────────────────────────
+    "ot security","ics security","scada security",
+    "embedded security","product security","hardware security",
+    # ── Generic broad catches ─────────────────────────────────
+    "cyber",  # catches "Director - Cyber", "VP Cyber" etc.
 ]
 
 def is_security(title):
