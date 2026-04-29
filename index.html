@@ -464,7 +464,14 @@ nav{background:#fff;border-bottom:1px solid var(--gray-200);height:56px;
     <div class="city-tab" onclick="setCity('BLR',this)">Bengaluru</div>
   </div>
   <div class="nav-right">
-    <div class="nav-meta"><span class="live-dot"></span><span id="navCount">140 GCCs</span></div>
+    <a href="resume.html" style="padding:5px 12px;border-radius:7px;background:rgba(184,134,11,.2);
+  border:1px solid rgba(184,134,11,.5);color:#e8c44a;font-size:12px;font-weight:600;
+  text-decoration:none;display:flex;align-items:center;gap:5px;white-space:nowrap;
+  transition:.15s" onmouseover="this.style.background='rgba(184,134,11,.35)'"
+  onmouseout="this.style.background='rgba(184,134,11,.2)'">
+  ✦ AI Resume Builder
+</a>
+<div class="nav-meta"><span class="live-dot"></span><span id="navCount">140 GCCs</span></div>
     <div id="navGuest" style="display:flex;gap:6px">
       <button class="btn-nav btn-nav-primary" onclick="showWall('signin')">Sign In</button>
       <button class="btn-nav btn-nav-ghost" onclick="showWall('signup')">Sign Up Free</button>
