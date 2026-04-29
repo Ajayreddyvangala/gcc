@@ -417,7 +417,7 @@ def extract_jobs_from_json(data, company, gcc_id, city_key):
             "city": city_key, "title": title,
             "location": city_d, "url": url,
             "source": "playwright",
-            "posted_date": str(posted),
+            "posted_date": (str(posted) if posted else None),
             "fetched_at": now_iso(),
             "is_active": True,
         })
@@ -596,7 +596,7 @@ def fetch_greenhouse(hyd_id, blr_id, company, token, seen):
                     "city": ck,"title": title,"location": cd,
                     "url": job.get("absolute_url",""),
                     "source": "greenhouse",
-                    "posted_date": job.get("updated_at",""),
+                    "posted_date": job.get("updated_at") or None,
                     "fetched_at": now_iso(),"is_active": True,
                 })
         time.sleep(0.3)
@@ -962,16 +962,27 @@ def main():
     print(f"\n{'─'*40}")
     print(f"💾 Saving {len(all_jobs)} jobs to Supabase…")
     if all_jobs:
-        for i in range(0, len(all_jobs), 100):
+        def clean(job):
+            """Ensure no empty strings in typed columns."""
+            j = dict(job)
+            j["posted_date"] = j.get("posted_date") or None
+            j["url"]         = j.get("url") or ""
+            j["location"]    = j.get("location") or ""
+            return j
+        cleaned = [clean(j) for j in all_jobs]
+        for i in range(0, len(cleaned), 100):
             sb.table("gcc_jobs").upsert(
-                all_jobs[i:i+100], on_conflict="id").execute()
+                cleaned[i:i+100], on_conflict="id").execute()
 
     companies = len(set(j["gcc_id"] for j in all_jobs))
-    sb.table("gcc_fetch_status").insert({
+    try:
+        sb.table("gcc_fetch_status").insert({
         "fetched_at":          now_iso(),
         "total_jobs":          len(all_jobs),
         "companies_with_jobs": companies,
-    }).execute()
+        }).execute()
+    except Exception as e:
+        print(f"  Status save warning: {e}")
 
     print(f"\n{'='*65}")
     print(f"✅ COMPLETE")
