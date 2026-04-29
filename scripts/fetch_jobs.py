@@ -1,37 +1,37 @@
 """
-GCC Intelligence Hub — Multi-Source Nightly Job Fetcher v3
+GCC Intelligence Hub — Multi-Source Nightly Job Fetcher v5
+==========================================================
 Sources:
-  1. Workday    — direct ATS API (91 companies, free, no key)
-  2. Greenhouse — direct ATS API (10 companies, free, no key)
-  3. Lever      — direct ATS API ( 3 companies, free, no key)
-  4. JSearch    — aggregator fallback (8 calls, RapidAPI free)
+  1. Playwright  — headless browser, bypasses Workday/iCIMS/SuccessFactors
+                   blocks (91 Workday + Wells Fargo + HSBC + Barclays +
+                   Citi + Deutsche Bank = 96 companies)
+  2. Greenhouse  — direct API, 10 companies (free, no key)
+  3. Lever       — direct API,  3 companies (free, no key)
+  4. JSearch     — city-wide + targeted fallback (8+16 calls)
+  5. Adzuna      — parallel aggregator (8 calls)
 """
 
-import os, re, time, requests
+import os, re, time, json, asyncio, requests
 from datetime import datetime, timezone
 from supabase import create_client
+from playwright.async_api import async_playwright
 
 # ── CREDENTIALS ───────────────────────────────────────────────
 SUPABASE_URL = os.environ['SUPABASE_URL']
 SUPABASE_KEY = os.environ['SUPABASE_KEY']
 JSEARCH_KEY  = os.environ['JSEARCH_KEY']
+ADZUNA_ID    = 'ef3e0dae'
+ADZUNA_KEY   = '0a7e855de7f680dedbfff13bf6ad8cd9'
 
 JSEARCH_URL  = "https://jsearch.p.rapidapi.com/search"
 JSEARCH_HOST = "jsearch.p.rapidapi.com"
-
-JSEARCH_QUERIES = [
-    "information security manager OR lead OR director OR engineer OR analyst OR architect",
-    "cybersecurity manager OR lead OR director OR head OR architect OR VP OR engineer",
-    "identity access management IAM manager OR lead OR director OR engineer OR architect",
-    "PING azure active directory security GCP endpoint security manager OR lead OR engineer",
-]
+ADZUNA_URL   = "https://api.adzuna.com/v1/api/jobs/in/search/1"
 
 CITIES = [
-    {"key":"HYD","name":"Hyderabad","jsearch":"Hyderabad, India","wd":"Hyderabad"},
-    {"key":"BLR","name":"Bengaluru","jsearch":"Bangalore, India", "wd":"Bangalore"},
+    {"key":"HYD","name":"Hyderabad","jsearch":"Hyderabad, India","adzuna":"Hyderabad"},
+    {"key":"BLR","name":"Bengaluru","jsearch":"Bangalore, India", "adzuna":"Bangalore"},
 ]
 
-# Security role keywords for filtering direct ATS results
 SECURITY_TERMS = [
     "information security","cybersecurity","cyber security",
     "identity access","iam","endpoint security","cloud security",
@@ -40,411 +40,530 @@ SECURITY_TERMS = [
     "security officer","security head","security specialist",
     "devsecops","appsec","soc analyst","threat intel",
     "privileged access","zero trust","siem","soc manager",
+    "infosec","network security","application security",
 ]
 
-# ── WORKDAY COMPANIES (91 total) ──────────────────────────────
-# Format: (hyd_id, blr_id, company_name, workday_base_url)
-WORKDAY_COMPANIES = [
-    # ── Original 34 ──────────────────────────────────────────
-    ( 6, 104,"Goldman Sachs",       "higher.gs.com/wday/cxs/gs/External"),
-    (11,None,"Vanguard",            "vanguard.wd5.myworkdayjobs.com/wday/cxs/vanguard/Vanguard_Careers_Worldwide"),
-    (44,None,"Swiss Re",            "swissre.wd3.myworkdayjobs.com/wday/cxs/Swissre/Swissre"),
-    (45,None,"Franklin Templeton",  "franklintempleton.wd5.myworkdayjobs.com/wday/cxs/FT/FT_External_Career_Site"),
-    (58, 142,"Adobe",               "adobe.wd5.myworkdayjobs.com/wday/cxs/external/external"),
-    (52, 119,"Bosch",               "bosch.wd3.myworkdayjobs.com/wday/cxs/bosch/Bosch_Ext_Careers"),
-    (42, 121,"ABB",                 "careers.abb/wday/cxs/abb/ABBglobal"),
-    (43, 122,"Honeywell",           "honeywell.wd5.myworkdayjobs.com/wday/cxs/Honeywell/HoneywellCareers"),
-    (None,129,"Medtronic",          "medtronic.wd5.myworkdayjobs.com/wday/cxs/MedtronicCareers/Global"),
-    (None,128,"Philips",            "philips.wd3.myworkdayjobs.com/wday/cxs/PhilipsExternalCareers/External_Philips_Careers"),
-    (30, 127,"Novartis",            "novartis.wd3.myworkdayjobs.com/wday/cxs/Novartis/Novartis_External_Careers"),
-    (31, 126,"AstraZeneca",         "astrazeneca.wd3.myworkdayjobs.com/wday/cxs/AZExternalSite/AstraZeneca"),
-    (32, 159,"Sanofi",              "sanofi.wd3.myworkdayjobs.com/wday/cxs/Sanofi/Sanofi_Careers"),
-    (41, 151,"Shell",               "shell.wd3.myworkdayjobs.com/wday/cxs/ShellExt/ShellExternalCareer"),
-    (55, 161,"BP",                  "bp.wd3.myworkdayjobs.com/wday/cxs/bpjobs/BP_External_Careers"),
-    (None,154,"Fiserv",             "fiserv.wd5.myworkdayjobs.com/wday/cxs/Fiserv_Careers/FiservCareers"),
-    (None,136,"BlackRock",          "blackrock.wd1.myworkdayjobs.com/wday/cxs/BlackRock/BlackRock_Careers"),
-    (None,135,"UBS",                "ubs.wd3.myworkdayjobs.com/wday/cxs/UBS/UBS_Global"),
-    (None,139,"Mastercard",         "mastercard.wd1.myworkdayjobs.com/wday/cxs/CorporateCareers/Mastercard_Careers"),
-    (None,152,"McKinsey",           "mckinsey.wd1.myworkdayjobs.com/wday/cxs/mckinseyandcompany/McKinsey"),
-    (None,153,"BCG",                "bcg.wd3.myworkdayjobs.com/wday/cxs/BCGCareers/BCG_Careers"),
-    (None,156,"Caterpillar",        "cat.wd5.myworkdayjobs.com/wday/cxs/CaterpillarCareers/CaterpillarJobPostings"),
-    (None,157,"Volvo",              "volvo.wd3.myworkdayjobs.com/wday/cxs/Volvo_Group_External/VolvoGroupCareers"),
-    (None,158,"Rockwell Automation","rockwellautomation.wd5.myworkdayjobs.com/wday/cxs/Rockwell_Automation/Global"),
-    (79, 176,"Thermo Fisher",       "thermofisher.wd5.myworkdayjobs.com/wday/cxs/TFSCareers/ThermoFisherScientificCareers"),
-    (85, 181,"Lam Research",        "lamresearch.wd1.myworkdayjobs.com/wday/cxs/LamCareers/LamResearchCareers"),
-    (86, 182,"Applied Materials",   "amat.wd1.myworkdayjobs.com/wday/cxs/External/AppliedMaterials"),
-    (87, 183,"Synopsys",            "synopsys.wd5.myworkdayjobs.com/wday/cxs/SynopsysCareers/SynopsysCareerSite"),
-    (88, 184,"Cadence",             "cadence.wd1.myworkdayjobs.com/wday/cxs/External/CadenceExternalCareers"),
-    (89, 185,"NXP Semiconductors",  "nxp.wd3.myworkdayjobs.com/wday/cxs/nxpcareers/NXPCareers"),
-    (90, 186,"Infineon",            "infineon.wd3.myworkdayjobs.com/wday/cxs/External/Infineon_Careers"),
-    (91, 187,"Zurich Insurance",    "zurich.wd3.myworkdayjobs.com/wday/cxs/Zurich/Zurich_Careers"),
-    (92,None,"Manulife",            "manulife.wd3.myworkdayjobs.com/wday/cxs/MFCJH_Jobs/ManulifeCareers"),
-    (97, 178,"Aptiv",               "aptiv.wd5.myworkdayjobs.com/wday/cxs/careers/AptivCareers"),
-    # ── New: BFSI ─────────────────────────────────────────────
-    ( 7, 188,"Wells Fargo",         "wellsfargo.wd5.myworkdayjobs.com/wday/cxs/WellsFargo/WellsFargoJobsGlobal"),
-    ( 5, 130,"HSBC",                "mycareer.hsbc.com/wday/cxs/hsbc/External_Careers"),
-    (39, 132,"Barclays",            "barclays.wd3.myworkdayjobs.com/wday/cxs/Barclays/Global"),
-    (40, 134,"Citi",                "citi.wd5.myworkdayjobs.com/wday/cxs/External/Citi_Global"),
-    (51, 155,"State Street",        "statestreet.wd1.myworkdayjobs.com/wday/cxs/Global/State_Street"),
-    (None,105,"Morgan Stanley",     "morganstanley.wd1.myworkdayjobs.com/wday/cxs/Careers/MS_Careers"),
-    (None,133,"Standard Chartered", "standardchartered.wd3.myworkdayjobs.com/wday/cxs/SCJOBS/Standard_Chartered_External"),
-    (None,137,"Fidelity",           "fidelityinvestments.wd5.myworkdayjobs.com/wday/cxs/Fidelity_Investments/External"),
-    (None,138,"Visa",               "visa.wd5.myworkdayjobs.com/wday/cxs/visa/External"),
-    (None,140,"PayPal",             "paypal.wd1.myworkdayjobs.com/wday/cxs/jobs/PayPal_Careers"),
-    (10, None,"MetLife",            "metlife.wd5.myworkdayjobs.com/wday/cxs/MetLife/Global"),
-    (75, 189,"Synchrony",           "synchrony.wd5.myworkdayjobs.com/wday/cxs/ExternalSite/Synchrony_External"),
-    (76, None,"Allstate",           "allstate.wd5.myworkdayjobs.com/wday/cxs/allstate/AllState"),
-    (77, 175,"Northern Trust",      "northerntrust.wd5.myworkdayjobs.com/wday/cxs/Careers/NorthernTrustCareers"),
-    (78, None,"Charles Schwab",     "schwab.wd5.myworkdayjobs.com/wday/cxs/Employment/CharlesSchwab"),
-    (73, 173,"Broadridge",          "broadridge.wd5.myworkdayjobs.com/wday/cxs/BroadridgeJobsGlobal/External"),
-    (74, 174,"NatWest Group",       "natwestgroup.wd3.myworkdayjobs.com/wday/cxs/NatWestGroupCareers/NatWest_Group_Careers"),
-    (93, None,"Principal Financial","principal.wd5.myworkdayjobs.com/wday/cxs/External/Principal"),
-    (94, None,"Nationwide",         "nationwide.wd5.myworkdayjobs.com/wday/cxs/External/Nationwide_Careers"),
-    (95, None,"Humana",             "humana.wd5.myworkdayjobs.com/wday/cxs/Humana/External"),
-    (96, 190,"Elevance Health",     "elevancehealth.wd5.myworkdayjobs.com/wday/cxs/External/ElevanceHealthCareers"),
-    (84, None,"WEX Inc",            "wexinc.wd5.myworkdayjobs.com/wday/cxs/WEXCareers/WEX_External_Careers"),
-    # ── New: Pharma / Healthcare ──────────────────────────────
-    (33, None,"Eli Lilly",          "lilly.wd5.myworkdayjobs.com/wday/cxs/LillyUS/LillyCareers"),
-    (34, None,"HCA Healthcare",     "hca.wd5.myworkdayjobs.com/wday/cxs/HCA/HCA_External_Careers"),
-    (56, None,"Roche",              "roche.wd3.myworkdayjobs.com/wday/cxs/roche_ext/External"),
-    (72, 172,"Amgen",               "amgen.wd5.myworkdayjobs.com/wday/cxs/AmgenCareers/External"),
-    (80, 177,"Danaher",             "danaher.wd5.myworkdayjobs.com/wday/cxs/DanaherCareers/DHR_Global"),
-    (67, None,"Lonza",              "lonza.wd3.myworkdayjobs.com/wday/cxs/lonza/LonzaCareers"),
-    # ── New: Manufacturing / Engineering ─────────────────────
-    (None,120,"Siemens",            "jobs.siemens.com/wday/cxs/siemens/External"),
-    (None,123,"GE",                 "jobs.gecareers.com/wday/cxs/gecareers/Global"),
-    (None,124,"Boeing",             "boeing.wd1.myworkdayjobs.com/wday/cxs/External/EXTERNAL_CAREER_SITE"),
-    (None,125,"Airbus",             "airbus.wd3.myworkdayjobs.com/wday/cxs/airbus/Airbus_Careers"),
-    (64, None,"Micron Technology",  "micron.wd1.myworkdayjobs.com/wday/cxs/External/Micron"),
-    (59, None,"Nvidia",             "nvidia.wd5.myworkdayjobs.com/wday/cxs/NVIDIAExternalCareerSite/External"),
-    (53, None,"Qualcomm",           "qualcomm.wd5.myworkdayjobs.com/wday/cxs/External/Qualcomm_External"),
-    (None,147,"Texas Instruments",  "careers.ti.com/wday/cxs/TI_External_Careers/External"),
-    (None,148,"Intel",              "intel.wd1.myworkdayjobs.com/wday/cxs/External/Global"),
-    # ── New: Retail / Consumer ────────────────────────────────
-    (36, 107,"Walmart",             "walmart.wd5.myworkdayjobs.com/wday/cxs/WalmartExternal/WalmartCareers"),
-    (37, 108,"Target",              "target.wd5.myworkdayjobs.com/wday/cxs/TargetExternal/IHUB"),
-    (35, None,"McDonald's",         "mcdonalds.wd5.myworkdayjobs.com/wday/cxs/External/McDonalds_External"),
-    (54, None,"Marriott",           "marriott.wd5.myworkdayjobs.com/wday/cxs/marriott/Global"),
-    (None,149,"Unilever",           "unilever.wd3.myworkdayjobs.com/wday/cxs/External/Global"),
-    (None,150,"P&G",                "pgcareers.wd5.myworkdayjobs.com/wday/cxs/Global/ProcterAndGamble"),
-    # ── New: IT / Tech ────────────────────────────────────────
-    (18, 113,"Cisco",               "cisco.wd5.myworkdayjobs.com/wday/cxs/Cisco/Global"),
-    (17, 111,"SAP",                 "sap.wd3.myworkdayjobs.com/wday/cxs/External/SAP_Careers"),
-    (16, 112,"Oracle",              "oracle.wd1.myworkdayjobs.com/wday/cxs/External/External"),
-    (62, 146,"VMware",              "vmware.wd1.myworkdayjobs.com/wday/cxs/External/VMware"),
-    (65, None,"NICE Systems",       "nice.wd5.myworkdayjobs.com/wday/cxs/NICEExternalCareers/External"),
-    (63, None,"Hitachi Vantara",    "hitachivantara.wd1.myworkdayjobs.com/wday/cxs/hitachivantara/External"),
-    (71, 171,"AT&T",                "att.wd5.myworkdayjobs.com/wday/cxs/External/att_global"),
-    (98, None,"OpenText",           "opentext.wd3.myworkdayjobs.com/wday/cxs/careers/OpenText_External"),
-    (81, None,"Sabre",              "sabre.wd3.myworkdayjobs.com/wday/cxs/SabreCareers/External"),
-    # ── New: Consulting ───────────────────────────────────────
-    (19, 114,"Accenture",           "accenture.wd103.myworkdayjobs.com/wday/cxs/AccentureCareersSite/External"),
-    (20, 115,"Deloitte",            "deloitte.wd5.myworkdayjobs.com/wday/cxs/DTUSACareers/External"),
-    (21, 116,"PwC",                 "pwc.wd3.myworkdayjobs.com/wday/cxs/Global/PricewaterhouseCoopers"),
-    (22, 117,"EY",                  "ey.wd5.myworkdayjobs.com/wday/cxs/EYJobsBroader/EYCareers"),
-    (23, 118,"KPMG",                "kpmg.wd5.myworkdayjobs.com/wday/cxs/KPMGExternal/KPMG_External"),
-    (83, 180,"Genpact",             "genpact.wd5.myworkdayjobs.com/wday/cxs/External/GenpactCareers"),
-]
-
-# ── GREENHOUSE COMPANIES (10) ─────────────────────────────────
-GREENHOUSE_COMPANIES = [
-    (14, 144,"Palo Alto Networks",  "paloaltonetworks"),
-    (15, 145,"CrowdStrike",         "crowdstrike"),
-    (12, 141,"Salesforce",          "salesforce"),
-    (57, 143,"ServiceNow",          "servicenow"),
-    (48, None,"Sonatype",           "sonatype"),
-    (46, None,"BeyondTrust",        "beyondtrust"),
-    (47, None,"Secureworks",        "secureworks"),
-    ( 9, None,"SailPoint",          "sailpoint"),
-    ( 8, None,"Ping Identity",      "pingidentity"),
-    (61, None,"Fortinet",           "fortinet"),
-]
-
-# ── LEVER COMPANIES (3) ───────────────────────────────────────
-LEVER_COMPANIES = [
-    (68, None,"DAZN",               "dazn"),
-    (69, None,"Pegasystems",        "pega"),
-    (None,160,"Zebra Technologies", "zebra"),
-]
-
-# ── JSEARCH FALLBACK — companies NOT on Workday/GH/Lever ──────
-JSEARCH_GCC_LIST = [
-    # HYD
-    (1,  "Microsoft",          "HYD"),(2,  "Google",             "HYD"),
-    (3,  "Amazon",             "HYD"),(4,  "JP Morgan Chase",    "HYD"),
-    (13, "IBM",                "HYD"),(33, "Eli Lilly",          "HYD"),
-    (38, "Deutsche Bank",      "HYD"),(49, "T-Mobile",           "HYD"),
-    (50, "Tesco",              "HYD"),(51, "State Street",       "HYD"),
-    (70, "ArcelorMittal",      "HYD"),(72, "Amgen",              "HYD"),
-    (74, "NatWest Group",      "HYD"),(75, "Synchrony Financial","HYD"),
-    (77, "Northern Trust",     "HYD"),(78, "Charles Schwab",     "HYD"),
-    (82, "FIS",                "HYD"),(93, "Principal Financial","HYD"),
-    (94, "Nationwide",         "HYD"),(95, "Humana",             "HYD"),
-    (99, "Conduent",           "HYD"),
-    # BLR
-    (101,"Microsoft",          "BLR"),(102,"Google",             "BLR"),
-    (103,"Amazon",             "BLR"),(106,"JP Morgan Chase",    "BLR"),
-    (109,"Flipkart",           "BLR"),(110,"IBM",                "BLR"),
-    (131,"Deutsche Bank",      "BLR"),(163,"State Street",       "BLR"),
-    (171,"AT&T",               "BLR"),(172,"Amgen",              "BLR"),
-    (173,"Broadridge",         "BLR"),(174,"NatWest Group",      "BLR"),
-    (175,"Northern Trust",     "BLR"),(177,"Danaher",            "BLR"),
-    (179,"FIS",                "BLR"),(189,"Synchrony Financial","BLR"),
-    (190,"Elevance Health",    "BLR"),
-]
-
-# ── COMPANY ALIASES ───────────────────────────────────────────
-ALIASES = {
-    "microsoft":         ["microsoft","microsoft india","microsoft corporation"],
-    "google":            ["google","google india","alphabet","google llc"],
-    "amazon":            ["amazon","aws","amazon web services","amazon dev center","amazon india"],
-    "salesforce":        ["salesforce","salesforce india","salesforce com"],
-    "oracle":            ["oracle","oracle india","oracle financial"],
-    "sap":               ["sap","sap india","sap labs"],
-    "cisco":             ["cisco","cisco systems","cisco india"],
-    "ibm":               ["ibm","ibm india","ibm research"],
-    "adobe":             ["adobe","adobe india","adobe systems"],
-    "servicenow":        ["servicenow","service now"],
-    "nvidia":            ["nvidia","nvidia india"],
-    "vmware":            ["vmware","broadcom","vmware india"],
-    "palo alto":         ["palo alto networks","palo alto","paloaltonetworks"],
-    "crowdstrike":       ["crowdstrike","crowd strike"],
-    "fortinet":          ["fortinet","fortinet india"],
-    "hitachi vantara":   ["hitachi vantara","hitachi","hitachi india"],
-    "qualcomm":          ["qualcomm","qualcomm india","qualcomm technologies"],
-    "micron":            ["micron","micron technology","micron india"],
-    "intel":             ["intel","intel india","intel corporation"],
-    "texas instruments": ["texas instruments","ti india","texas instruments india"],
-    "synopsys":          ["synopsys","synopsys india"],
-    "cadence":           ["cadence","cadence design","cadence india"],
-    "nice":              ["nice systems","nice","nice incontact","nice india"],
-    "pegasystems":       ["pegasystems","pega","pega systems"],
-    "opentext":          ["opentext","open text","micro focus"],
-    "sabre":             ["sabre","sabre corporation","sabre india"],
-    "sonatype":          ["sonatype"],
-    "beyondtrust":       ["beyondtrust","beyond trust"],
-    "secureworks":       ["secureworks","secure works"],
-    "sailpoint":         ["sailpoint","sail point","sailpoint technologies"],
-    "ping identity":     ["ping identity","pingidentity","forgerock","ping"],
-    "dazn":              ["dazn"],
-    "jp morgan":         ["jpmorgan","jp morgan","j.p. morgan","jpmc","jpmorgan chase"],
-    "goldman sachs":     ["goldman sachs","goldman","goldman sachs india"],
-    "morgan stanley":    ["morgan stanley","morganstanley","morgan stanley india"],
-    "wells fargo":       ["wells fargo","wellsfargo","wells fargo india",
-                          "wells fargo bank","wells fargo & company"],
-    "hsbc":              ["hsbc","hsbc india","hsbc bank","hsbc global",
-                          "hsbc software","hsbc holdings"],
-    "barclays":          ["barclays","barclays india","barclays bank",
-                          "barclays shared services"],
-    "deutsche bank":     ["deutsche bank","deutschebank","db india","deutsche bank india"],
-    "citi":              ["citi","citibank","citigroup","citi india","citicorp"],
-    "standard chartered":["standard chartered","stanchart","standard chartered bank"],
-    "ubs":               ["ubs","ubs india","ubs ag"],
-    "blackrock":         ["blackrock","black rock","blackrock india"],
-    "fidelity":          ["fidelity","fidelity investments","fidelity india","fmr"],
-    "visa":              ["visa","visa inc","visa india","visa worldwide"],
-    "mastercard":        ["mastercard","master card","mastercard india"],
-    "paypal":            ["paypal","pay pal","paypal india"],
-    "state street":      ["state street","state street india","ssga"],
-    "swiss re":          ["swiss re","swissre","swiss reinsurance"],
-    "franklin templeton":["franklin templeton","franklin","templeton","franklin resources"],
-    "vanguard":          ["vanguard","vanguard india","the vanguard group"],
-    "metlife":           ["metlife","met life","metlife india","metropolitan life"],
-    "synchrony":         ["synchrony","synchrony financial","synchrony india"],
-    "allstate":          ["allstate","allstate india","allstate solutions"],
-    "northern trust":    ["northern trust","northerntrust","northern trust india"],
-    "charles schwab":    ["schwab","charles schwab","charles schwab india"],
-    "broadridge":        ["broadridge","broad ridge","broadridge financial","broadridge india"],
-    "natwest":           ["natwest","nat west","natwest group","rbs",
-                          "royal bank scotland","natwest markets"],
-    "fiserv":            ["fiserv","fis","fidelity national","fisglobal",
-                          "fidelity national information"],
-    "principal":         ["principal financial","principal","principal india"],
-    "nationwide":        ["nationwide","nationwide india"],
-    "zurich":            ["zurich","zurich insurance","zurich india"],
-    "manulife":          ["manulife","john hancock","manulife india"],
-    "wex":               ["wex","wex inc","wright express"],
-    "novartis":          ["novartis","novartis india","sandoz"],
-    "astrazeneca":       ["astrazeneca","astra zeneca","astrazeneca india"],
-    "sanofi":            ["sanofi","sanofi india","sanofi aventis"],
-    "eli lilly":         ["eli lilly","lilly","lilly india"],
-    "roche":             ["roche","roche india","genentech","roche diagnostics"],
-    "amgen":             ["amgen","amgen india"],
-    "thermo fisher":     ["thermo fisher","thermofisher","thermo fisher scientific"],
-    "lonza":             ["lonza","lonza india"],
-    "danaher":           ["danaher","danaher india","beckman coulter"],
-    "philips":           ["philips","philips india","philips healthcare"],
-    "medtronic":         ["medtronic","medtronic india"],
-    "hca":               ["hca","hca healthcare","hca india"],
-    "humana":            ["humana","humana india"],
-    "elevance":          ["elevance","elevance health","anthem","wellpoint"],
-    "bosch":             ["bosch","bosch india","robert bosch"],
-    "siemens":           ["siemens","siemens india","siemens healthineers"],
-    "abb":               ["abb","abb india","abb limited"],
-    "honeywell":         ["honeywell","honeywell india","honeywell technology"],
-    "ge":                ["general electric","ge aviation","ge digital","ge india","ge power"],
-    "boeing":            ["boeing","boeing india"],
-    "airbus":            ["airbus","airbus india","airbus group"],
-    "shell":             ["shell","shell india","royal dutch shell"],
-    "bp":                ["bp india","british petroleum","bp plc","bp exploration"],
-    "arcelormittal":     ["arcelormittal","arcelor mittal","arcelor"],
-    "caterpillar":       ["caterpillar","caterpillar india"],
-    "volvo":             ["volvo","volvo india","volvo group"],
-    "rockwell":          ["rockwell automation","rockwell","rockwell india"],
-    "aptiv":             ["aptiv","aptiv india","delphi technologies"],
-    "nxp":               ["nxp","nxp semiconductors","nxp india"],
-    "infineon":          ["infineon","infineon technologies","infineon india"],
-    "lam research":      ["lam research","lam research india"],
-    "applied materials": ["applied materials","amat","applied materials india"],
-    "walmart":           ["walmart","walmart india","walmart global tech","walmart labs"],
-    "target":            ["target","target india","target corporation"],
-    "flipkart":          ["flipkart"],
-    "mcdonald":          ["mcdonald","mcdonalds","mcdonald's"],
-    "marriott":          ["marriott","marriott india","marriott international"],
-    "tesco":             ["tesco","tesco india","tesco technology"],
-    "unilever":          ["unilever","unilever india","hul","hindustan unilever"],
-    "p&g":               ["procter","gamble","p&g","procter gamble",
-                          "procter & gamble india"],
-    "accenture":         ["accenture","accenture india","accenture solutions"],
-    "deloitte":          ["deloitte","deloitte india","deloitte consulting","deloitte touche"],
-    "pwc":               ["pricewaterhousecoopers","price waterhouse","pwc","pwc india"],
-    "ey":                ["ernst","ernst young","ernst & young","ey india"],
-    "kpmg":              ["kpmg","kpmg india"],
-    "mckinsey":          ["mckinsey","mckinsey india","mckinsey & company"],
-    "bcg":               ["boston consulting","bcg","bcg india"],
-    "genpact":           ["genpact","genpact india"],
-    "at&t":              ["at&t","att","at t","at&t india","att global"],
-    "t-mobile":          ["t-mobile","tmobile","t mobile"],
-    "conduent":          ["conduent","conduent india"],
-    "zebra":             ["zebra technologies","zebra","zebra india"],
-    "nice systems":      ["nice systems","nice","nice incontact"],
-}
-
-
-def norm(s):
-    s = s.lower()
-    s = re.sub(r'[^a-z0-9 ]',' ',s)
-    s = re.sub(r'\b(inc|llc|ltd|limited|corp|corporation|group|india|pvt|'
-               r'private|company|the|and|solutions|services|technology|'
-               r'technologies|global|tech|bank|financial|consulting|'
-               r'software|systems|international)\b',' ',s)
-    return re.sub(r'\s+',' ',s).strip()
-
-def get_variants(name):
-    v = {norm(name)}
-    nl = name.lower()
-    for key,alts in ALIASES.items():
-        if key in nl or any(a in nl for a in alts):
-            v.update(alts)
-    words = norm(name).split()
-    if words: v.add(words[0])
-    return v
-
-def match_gcc_jsearch(employer, city_key):
-    if not employer: return None
-    en = norm(employer)
-    for gcc_id,gcc_name,gcc_city in JSEARCH_GCC_LIST:
-        if gcc_city != city_key: continue
-        for v in get_variants(gcc_name):
-            nv = norm(v)
-            if nv and (en==nv or en.startswith(nv) or nv in en):
-                return gcc_id
-    return None
-
-def is_security_role(title):
+def is_security(title):
     t = title.lower()
-    return any(term in t for term in SECURITY_TERMS)
+    return any(s in t for s in SECURITY_TERMS)
 
-def make_job(gcc_id, company, city_key, city_display,
-             title, url, posted, source, job_id):
-    return {
-        "id":          job_id[:120],
-        "gcc_id":      gcc_id,
-        "company":     company,
-        "city":        city_key,
-        "title":       title,
-        "location":    city_display,
-        "url":         url,
-        "source":      source,
-        "posted_date": posted,
-        "fetched_at":  datetime.now(timezone.utc).isoformat(),
-        "is_active":   True,
-    }
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ═══════════════════════════════════════════════════════════════
-#  SOURCE 1 — WORKDAY DIRECT
+#  SOURCE 1 — PLAYWRIGHT BROWSER  (bypasses all ATS restrictions)
 # ═══════════════════════════════════════════════════════════════
-WD_SEARCH_TERMS = [
-    "information security",
-    "cybersecurity",
-    "identity access management",
-    "cloud security",
+
+# Each entry: (hyd_id, blr_id, company_name, page_url_hyd, page_url_blr)
+# page_url is the actual careers search page a user would open
+# Playwright loads it, intercepts the JSON the page fetches itself
+PLAYWRIGHT_COMPANIES = [
+    # ── Workday companies ─────────────────────────────────────
+    ( 6, 104,"Goldman Sachs",
+      "https://higher.gs.com/roles?query=information+security&locations=Hyderabad",
+      "https://higher.gs.com/roles?query=information+security&locations=Bengaluru"),
+    (11,None,"Vanguard",
+      "https://www.vanguardjobs.com/search-jobs/?keyword=security&location=Hyderabad",
+      None),
+    (44,None,"Swiss Re",
+      "https://www.swissre.com/careers/open-positions.html?field_posting_title_value=security",
+      None),
+    (45,None,"Franklin Templeton",
+      "https://www.franklintempletoncareers.com/search-jobs/?keyword=security&location=Hyderabad",
+      None),
+    (58, 142,"Adobe",
+      "https://careers.adobe.com/us/en/search-results?keywords=security&location=Hyderabad",
+      "https://careers.adobe.com/us/en/search-results?keywords=security&location=Bengaluru"),
+    (52, 119,"Bosch",
+      "https://www.bosch.com/careers/find-your-job/?country=india&query=security&location=Hyderabad",
+      "https://www.bosch.com/careers/find-your-job/?country=india&query=security&location=Bengaluru"),
+    (42, 121,"ABB",
+      "https://careers.abb/global/en/search-results?keywords=security&location=Hyderabad",
+      "https://careers.abb/global/en/search-results?keywords=security&location=Bengaluru"),
+    (43, 122,"Honeywell",
+      "https://careers.honeywell.com/us/en/search-results?keywords=security&location=Hyderabad",
+      "https://careers.honeywell.com/us/en/search-results?keywords=security&location=Bengaluru"),
+    (None,129,"Medtronic",
+      None,
+      "https://jobs.medtronic.com/jobs/search?q=security&location=Bengaluru"),
+    (None,128,"Philips",
+      None,
+      "https://www.careers.philips.com/global/en/search-results?keywords=security&location=Bengaluru"),
+    (30, 127,"Novartis",
+      "https://www.novartis.com/careers/career-search#location=Hyderabad&keyword=security",
+      "https://www.novartis.com/careers/career-search#location=Bengaluru&keyword=security"),
+    (31, 126,"AstraZeneca",
+      "https://careers.astrazeneca.com/search-jobs?q=security&l=Hyderabad",
+      "https://careers.astrazeneca.com/search-jobs?q=security&l=Bengaluru"),
+    (32, 159,"Sanofi",
+      "https://www.sanofi.com/en/careers/search-jobs#location=Hyderabad&keyword=security",
+      "https://www.sanofi.com/en/careers/search-jobs#location=Bengaluru&keyword=security"),
+    (41, 151,"Shell",
+      "https://www.shell.com/careers/search-jobs.html?q=security&country=India&city=Hyderabad",
+      "https://www.shell.com/careers/search-jobs.html?q=security&country=India&city=Bengaluru"),
+    (55, 161,"BP",
+      "https://www.bp.com/en/global/corporate/careers/searching-for-jobs.html?jobFamily=Information+Technology&location=Hyderabad",
+      "https://www.bp.com/en/global/corporate/careers/searching-for-jobs.html?jobFamily=Information+Technology&location=Bengaluru"),
+    (None,154,"Fiserv",
+      None,
+      "https://careers.fiserv.com/en/jobs/?q=security&l=Bengaluru"),
+    (None,136,"BlackRock",
+      None,
+      "https://careers.blackrock.com/job-search-results/?q=security&location=Bengaluru"),
+    (None,135,"UBS",
+      None,
+      "https://www.ubs.com/global/en/careers/search-jobs.html?q=security&location=Bengaluru"),
+    (None,139,"Mastercard",
+      None,
+      "https://careers.mastercard.com/us/en/search-results?keywords=security&location=Bengaluru"),
+    (None,152,"McKinsey",
+      None,
+      "https://www.mckinsey.com/careers/search-jobs?q=security&l=Bengaluru"),
+    (None,153,"BCG",
+      None,
+      "https://careers.bcg.com/jobs?q=security&l=Bengaluru"),
+    (None,156,"Caterpillar",
+      None,
+      "https://careers.caterpillar.com/en/jobs/search/?q=security&location=Bengaluru"),
+    (None,157,"Volvo",
+      None,
+      "https://www.volvogroup.com/en/careers/search-jobs.html?q=security&l=Bengaluru"),
+    (None,158,"Rockwell Automation",
+      None,
+      "https://jobs.rockwellautomation.com/search-jobs/security/Bengaluru"),
+    (79, 176,"Thermo Fisher",
+      "https://jobs.thermofisher.com/global/en/search-results?keywords=security&location=Hyderabad",
+      "https://jobs.thermofisher.com/global/en/search-results?keywords=security&location=Bengaluru"),
+    (85, 181,"Lam Research",
+      "https://careers.lamresearch.com/search-results?keywords=security&location=Hyderabad",
+      "https://careers.lamresearch.com/search-results?keywords=security&location=Bengaluru"),
+    (86, 182,"Applied Materials",
+      "https://careers.appliedmaterials.com/careers/search-results?keywords=security&location=Hyderabad",
+      "https://careers.appliedmaterials.com/careers/search-results?keywords=security&location=Bengaluru"),
+    (87, 183,"Synopsys",
+      "https://careers.synopsys.com/careers/jobs?keywords=security&location=Hyderabad",
+      "https://careers.synopsys.com/careers/jobs?keywords=security&location=Bengaluru"),
+    (88, 184,"Cadence",
+      "https://cadence.wd1.myworkdayjobs.com/en-US/External_Careers/jobs?q=security&locations=Hyderabad",
+      "https://cadence.wd1.myworkdayjobs.com/en-US/External_Careers/jobs?q=security&locations=Bengaluru"),
+    (89, 185,"NXP Semiconductors",
+      "https://nxp.wd3.myworkdayjobs.com/careers/jobs?q=security&locations=Hyderabad",
+      "https://nxp.wd3.myworkdayjobs.com/careers/jobs?q=security&locations=Bengaluru"),
+    (90, 186,"Infineon",
+      "https://www.infineon.com/cms/en/careers/working-at-infineon/jobsearch/?q=security&l=Hyderabad",
+      "https://www.infineon.com/cms/en/careers/working-at-infineon/jobsearch/?q=security&l=Bengaluru"),
+    (91, 187,"Zurich Insurance",
+      "https://www.zurich.com/en/careers/search-results?q=security&l=Hyderabad",
+      "https://www.zurich.com/en/careers/search-results?q=security&l=Bengaluru"),
+    (92,None,"Manulife",
+      "https://manulife.wd3.myworkdayjobs.com/MFCJH_Jobs/jobs?q=security",
+      None),
+    (97, 178,"Aptiv",
+      "https://aptiv.wd5.myworkdayjobs.com/careers/jobs?q=security&locations=Hyderabad",
+      "https://aptiv.wd5.myworkdayjobs.com/careers/jobs?q=security&locations=Bengaluru"),
+    # ── BFSI — iCIMS / SuccessFactors / own ATS ───────────────
+    ( 7, 188,"Wells Fargo",
+      "https://www.wellsfargojobs.com/en/jobs/?search=information+security&country=India&city=Hyderabad",
+      "https://www.wellsfargojobs.com/en/jobs/?search=information+security&country=India&city=Bengaluru"),
+    ( 5, 130,"HSBC",
+      "https://mycareer.hsbc.com/en_GB/external/SearchJobs/security?3_120_3=5357993&3_78_3=5357993",
+      "https://mycareer.hsbc.com/en_GB/external/SearchJobs/security?3_120_3=5357993"),
+    (39, 132,"Barclays",
+      "https://search.jobs.barclays/search?q=security&location=Hyderabad",
+      "https://search.jobs.barclays/search?q=security&location=Bengaluru"),
+    (40, 134,"Citi",
+      "https://jobs.citi.com/search-jobs/security/Hyderabad/287",
+      "https://jobs.citi.com/search-jobs/security/Bengaluru/287"),
+    (38, 131,"Deutsche Bank",
+      "https://careers.db.com/search-results?keywords=security&location=Hyderabad",
+      "https://careers.db.com/search-results?keywords=security&location=Bengaluru"),
+    (None,105,"Morgan Stanley",
+      None,
+      "https://morganstanley.wd1.myworkdayjobs.com/en-US/Careers/jobs?q=security&locations=Bengaluru"),
+    (None,133,"Standard Chartered",
+      None,
+      "https://sc.com/en/careers/job-search/?q=security&l=Bengaluru"),
+    (None,137,"Fidelity",
+      None,
+      "https://jobs.fidelity.com/search-jobs/security/Bengaluru"),
+    (None,138,"Visa",
+      None,
+      "https://careers.visa.com/jobs/search/?q=security&location=Bengaluru"),
+    (None,140,"PayPal",
+      None,
+      "https://paypalcareers.com/jobs?q=security&l=Bengaluru"),
+    (10,None,"MetLife",
+      "https://jobs.metlife.com/search-jobs/security/Hyderabad/18/en-US",
+      None),
+    (11,None,"Vanguard",
+      "https://www.vanguardjobs.com/search-jobs/?keyword=security&location=Hyderabad",
+      None),
+    (75, 189,"Synchrony",
+      "https://www.synchronycareers.com/search-results?q=security&l=Hyderabad",
+      "https://www.synchronycareers.com/search-results?q=security&l=Bengaluru"),
+    (76,None,"Allstate",
+      "https://www.allstatejobs.com/search-results?q=security&l=Hyderabad",
+      None),
+    (77, 175,"Northern Trust",
+      "https://careers.northerntrust.com/search-results?q=security&l=Hyderabad",
+      "https://careers.northerntrust.com/search-results?q=security&l=Bengaluru"),
+    (78,None,"Charles Schwab",
+      "https://www.schwabjobs.com/search-results?q=security&l=Hyderabad",
+      None),
+    (73, 173,"Broadridge",
+      "https://careers.broadridge.com/search-jobs?q=security&l=Hyderabad",
+      "https://careers.broadridge.com/search-jobs?q=security&l=Bengaluru"),
+    (74, 174,"NatWest Group",
+      "https://jobs.natwestgroup.com/search-results?q=security&l=Hyderabad",
+      "https://jobs.natwestgroup.com/search-results?q=security&l=Bengaluru"),
+    (93,None,"Principal Financial",
+      "https://jobs.principal.com/search-results?q=security&l=Hyderabad",
+      None),
+    (94,None,"Nationwide",
+      "https://jobs.nationwide.com/search-results?q=security&l=Hyderabad",
+      None),
+    (95,None,"Humana",
+      "https://careers.humana.com/search-results?q=security&l=Hyderabad",
+      None),
+    (96, 190,"Elevance Health",
+      "https://careers.elevancehealth.com/jobs/search?q=security&l=Hyderabad",
+      "https://careers.elevancehealth.com/jobs/search?q=security&l=Bengaluru"),
+    (84,None,"WEX Inc",
+      "https://www.wexinc.com/careers/job-search?q=security&l=Hyderabad",
+      None),
+    # ── Pharma / Healthcare ───────────────────────────────────
+    (33,None,"Eli Lilly",
+      "https://careers.lilly.com/search-jobs?q=security&l=Hyderabad",
+      None),
+    (34,None,"HCA Healthcare",
+      "https://careers.hcahealthcare.com/jobs?q=security&l=Hyderabad",
+      None),
+    (56,None,"Roche",
+      "https://www.roche.com/careers/jobs.htm#section=joblist&location=Hyderabad&query=security",
+      None),
+    (72, 172,"Amgen",
+      "https://careers.amgen.com/en/search-jobs?q=security&l=Hyderabad",
+      "https://careers.amgen.com/en/search-jobs?q=security&l=Bengaluru"),
+    (80, 177,"Danaher",
+      "https://jobs.danaher.com/global/en/search-results?keywords=security&location=Hyderabad",
+      "https://jobs.danaher.com/global/en/search-results?keywords=security&location=Bengaluru"),
+    (67,None,"Lonza",
+      "https://www.lonza.com/careers",
+      None),
+    # ── Manufacturing / Engineering ───────────────────────────
+    (None,120,"Siemens",
+      None,
+      "https://jobs.siemens.com/careers?query=security&location=Bengaluru"),
+    (None,123,"GE",
+      None,
+      "https://jobs.gecareers.com/global/en/search-results?keywords=security&location=Bengaluru"),
+    (None,124,"Boeing",
+      None,
+      "https://jobs.boeing.com/search-jobs/security/Bengaluru"),
+    (None,125,"Airbus",
+      None,
+      "https://www.airbus.com/en/careers/search-jobs?q=security&location=Bengaluru"),
+    (64,None,"Micron Technology",
+      "https://jobs.micron.com/search-jobs/security/Hyderabad/23870",
+      None),
+    (59,None,"Nvidia",
+      "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/jobs?q=security&locations=Hyderabad",
+      None),
+    (53,None,"Qualcomm",
+      "https://careers.qualcomm.com/careers/job?q=security&location=Hyderabad",
+      None),
+    (None,147,"Texas Instruments",
+      None,
+      "https://careers.ti.com/search-results/?q=security&l=Bengaluru"),
+    (None,148,"Intel",
+      None,
+      "https://jobs.intel.com/en/search#q=security&l=Bengaluru"),
+    # ── Retail / Consumer ─────────────────────────────────────
+    (36, 107,"Walmart",
+      "https://careers.walmart.com/results?q=security&jobCity=Hyderabad",
+      "https://careers.walmart.com/results?q=security&jobCity=Bengaluru"),
+    (37, 108,"Target",
+      "https://jobs.target.com/search-jobs/security/India/1479",
+      "https://jobs.target.com/search-jobs/security/Bengaluru/1479"),
+    (35,None,"McDonald's",
+      "https://corporate.mcdonalds.com/corpmcd/Careers.html",
+      None),
+    (54,None,"Marriott",
+      "https://jobs.marriott.com/marriott/jobs?keywords=security&location=Hyderabad",
+      None),
+    (None,149,"Unilever",
+      None,
+      "https://careers.unilever.com/search-jobs?q=security&location=Bengaluru"),
+    (None,150,"P&G",
+      None,
+      "https://www.pgcareers.com/global/en/search-results?keywords=security&location=Bengaluru"),
+    # ── IT / Tech ─────────────────────────────────────────────
+    (18, 113,"Cisco",
+      "https://jobs.cisco.com/jobs/SearchJobs/security?3_78_3=1073&locationLocationsCode=hyderabad",
+      "https://jobs.cisco.com/jobs/SearchJobs/security?3_78_3=1073&locationLocationsCode=bangalore"),
+    (17, 111,"SAP",
+      "https://jobs.sap.com/search/?q=security&location=Hyderabad",
+      "https://jobs.sap.com/search/?q=security&location=Bengaluru"),
+    (16, 112,"Oracle",
+      "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/jobs?keyword=security&locations=Hyderabad",
+      "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/jobs?keyword=security&locations=Bengaluru"),
+    (62, 146,"VMware",
+      "https://careers.broadcom.com/jobs?q=security&location=Hyderabad",
+      "https://careers.broadcom.com/jobs?q=security&location=Bengaluru"),
+    (65,None,"NICE Systems",
+      "https://www.nice.com/about/careers/job-openings",
+      None),
+    (63,None,"Hitachi Vantara",
+      "https://www.hitachivantara.com/en-us/company/careers.html?q=security&location=Hyderabad",
+      None),
+    (71, 171,"AT&T",
+      "https://www.att.jobs/search-jobs/security/India/117/1",
+      "https://www.att.jobs/search-jobs/security/India/117/1"),
+    (98,None,"OpenText",
+      "https://careers.opentext.com/search-results?q=security&l=Hyderabad",
+      None),
+    (81,None,"Sabre",
+      "https://careers.sabre.com/en_US/search-results?keywords=security&location=Hyderabad",
+      None),
+    # ── Consulting ────────────────────────────────────────────
+    (19, 114,"Accenture",
+      "https://www.accenture.com/in-en/careers/jobsearch?jk=security&jl=Hyderabad",
+      "https://www.accenture.com/in-en/careers/jobsearch?jk=security&jl=Bengaluru"),
+    (20, 115,"Deloitte",
+      "https://apply.deloitte.com/careers/SearchJobs/security?3_60_3=1006905",
+      "https://apply.deloitte.com/careers/SearchJobs/security?3_60_3=1006986"),
+    (21, 116,"PwC",
+      "https://www.pwc.in/careers/current-opportunities/search.html?q=security&location=Hyderabad",
+      "https://www.pwc.in/careers/current-opportunities/search.html?q=security&location=Bengaluru"),
+    (22, 117,"EY",
+      "https://eyglobal.yello.co/external/requisitions?page=1&query=security+hyderabad",
+      "https://eyglobal.yello.co/external/requisitions?page=1&query=security+bengaluru"),
+    (23, 118,"KPMG",
+      "https://kpmgcareers.kpmg.com/global/en/search-results.html?keyword=security&location=Hyderabad",
+      "https://kpmgcareers.kpmg.com/global/en/search-results.html?keyword=security&location=Bengaluru"),
+    (83, 180,"Genpact",
+      "https://www.genpact.com/careers/job-search?q=security&l=Hyderabad",
+      "https://www.genpact.com/careers/job-search?q=security&l=Bengaluru"),
 ]
 
-def fetch_workday(hyd_id, blr_id, company, base_url, seen):
-    jobs = []
-    city_map = []
-    if hyd_id: city_map.append((hyd_id,"HYD","Hyderabad"))
-    if blr_id: city_map.append((blr_id,"BLR","Bangalore"))
+# ── JSON patterns Playwright watches for in network responses ─
+WORKDAY_API_PATTERNS = [
+    "/wday/cxs/",        # Workday REST
+    "/jobs?",            # Generic jobs API
+    "/jobPostings",      # Workday response key
+    "api/jobs",          # Generic
+    "careers/search",    # Various ATS
+    "search/jobs",       # iCIMS pattern
+    "/requisitions",     # SuccessFactors
+    "job-search",        # Various
+]
 
-    for gcc_id, city_key, city_wd in city_map:
-        for term in WD_SEARCH_TERMS:
-            try:
-                url = f"https://{base_url}/jobs"
-                # Try POST first (standard Workday API)
-                payload = {"searchText": term,
-                           "appliedFacets": {"locationCountry": ["IND"]},
-                           "limit": 20, "offset": 0}
-                r = requests.post(url, json=payload,
-                                  headers={"Content-Type":"application/json"},
-                                  timeout=15)
-                if r.status_code not in (200,201):
-                    # Try GET fallback
-                    r = requests.get(url,
-                        params={"q":term,"locations":city_wd},
-                        timeout=15)
-                if r.status_code not in (200,201):
-                    continue
-                data = r.json()
-                results = (data.get("jobPostings") or
-                           data.get("jobs") or [])
-                for job in results:
-                    title = (job.get("title") or
-                             job.get("jobTitle") or "")
-                    if not is_security_role(title):
-                        continue
-                    loc = str(job.get("locationsText") or
-                              job.get("primaryLocation") or
-                              job.get("location") or "").lower()
-                    if loc and city_wd.lower() not in loc and \
-                       "india" not in loc:
-                        continue
-                    ext = (job.get("externalPath") or
-                           job.get("id") or title)
-                    jid = re.sub(r'[^a-z0-9_]','_',
-                        f"wd_{company}_{city_key}_{ext}".lower())
-                    if jid in seen: continue
-                    seen.add(jid)
-                    apply = job.get("externalPath","")
-                    if apply and not apply.startswith("http"):
-                        host = base_url.split("/wday")[0]
-                        apply = f"https://{host}{apply}"
-                    jobs.append(make_job(
-                        gcc_id, company, city_key,
-                        "Hyderabad" if city_key=="HYD" else "Bengaluru",
-                        title, apply or f"https://{base_url}/jobs",
-                        job.get("postedOn",""), "workday", jid))
-                time.sleep(0.25)
-            except Exception:
-                pass
+def looks_like_job_list(data):
+    """Check if parsed JSON looks like a job list response."""
+    if isinstance(data, list) and len(data) > 0:
+        first = data[0]
+        if isinstance(first, dict):
+            return any(k in first for k in
+                       ["title","jobTitle","job_title","name","requisitionId"])
+    if isinstance(data, dict):
+        for key in ["jobPostings","jobs","results","value","items",
+                    "data","postings","requisitions","positions"]:
+            val = data.get(key)
+            if isinstance(val, list) and len(val) > 0:
+                return True
+    return False
+
+def extract_jobs_from_json(data, company, gcc_id, city_key):
+    """Extract job title + URL from various JSON formats."""
+    city_d = "Hyderabad" if city_key == "HYD" else "Bengaluru"
+    jobs = []
+
+    # Normalise to list
+    items = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        for key in ["jobPostings","jobs","results","value","items",
+                    "data","postings","requisitions","positions"]:
+            v = data.get(key)
+            if isinstance(v, list):
+                items = v; break
+
+    for item in items:
+        if not isinstance(item, dict): continue
+        title = (item.get("title") or item.get("jobTitle") or
+                 item.get("job_title") or item.get("name") or
+                 item.get("externalJobTitle") or "")
+        if not title or not is_security(title): continue
+
+        # URL
+        url = (item.get("externalPath") or item.get("url") or
+               item.get("absolute_url") or item.get("applyUrl") or
+               item.get("jobUrl") or item.get("link") or "")
+
+        # Posted date
+        posted = (item.get("postedOn") or item.get("posted_at") or
+                  item.get("publishedDate") or item.get("created") or
+                  item.get("startDate") or "")
+
+        job_id = (item.get("externalPath") or item.get("id") or
+                  item.get("jobId") or item.get("requisitionId") or title)
+        jid = re.sub(r'[^a-z0-9_]','_',
+            f"pw_{company}_{city_key}_{job_id}".lower())[:120]
+
+        jobs.append({
+            "id": jid, "gcc_id": gcc_id, "company": company,
+            "city": city_key, "title": title,
+            "location": city_d, "url": url,
+            "source": "playwright",
+            "posted_date": str(posted),
+            "fetched_at": now_iso(),
+            "is_active": True,
+        })
     return jobs
 
+async def scrape_one_page(page, url, company, gcc_id, city_key,
+                           seen, timeout=25000):
+    """Load one careers page and intercept job JSON responses."""
+    captured = []
+
+    async def on_response(response):
+        try:
+            rurl = response.url
+            if response.status != 200: return
+            ct = response.headers.get("content-type","")
+            if "json" not in ct: return
+            if not any(p in rurl for p in WORKDAY_API_PATTERNS):
+                return
+            body = await response.body()
+            data = json.loads(body)
+            if not looks_like_job_list(data): return
+            jobs = extract_jobs_from_json(data, company, gcc_id, city_key)
+            for j in jobs:
+                if j["id"] not in seen:
+                    seen.add(j["id"])
+                    captured.append(j)
+        except Exception:
+            pass
+
+    page.on("response", on_response)
+    try:
+        await page.goto(url, wait_until="networkidle", timeout=timeout)
+        # Extra wait for JS-heavy pages
+        await page.wait_for_timeout(3000)
+    except Exception:
+        pass
+    page.remove_listener("response", on_response)
+
+    # Fallback: if no JSON captured, try parsing visible job titles from DOM
+    if not captured:
+        try:
+            # Common selectors across ATS platforms
+            selectors = [
+                "li[data-automation='job-result']",
+                ".job-result-item","[class*='job-title']",
+                "[class*='jobTitle']","[data-job-id]",
+                ".jobs-list li","[class*='JobResult']",
+            ]
+            city_d = "Hyderabad" if city_key=="HYD" else "Bengaluru"
+            for sel in selectors:
+                els = await page.query_selector_all(sel)
+                if not els: continue
+                for el in els[:30]:
+                    title = (await el.get_attribute("title") or
+                             await el.inner_text())
+                    title = title.strip().split("\n")[0][:100]
+                    if not title or not is_security(title): continue
+                    link_el = await el.query_selector("a")
+                    href = ""
+                    if link_el:
+                        href = await link_el.get_attribute("href") or ""
+                    jid = re.sub(r'[^a-z0-9_]','_',
+                        f"pw_{company}_{city_key}_{title}".lower())[:120]
+                    if jid in seen: continue
+                    seen.add(jid)
+                    captured.append({
+                        "id": jid, "gcc_id": gcc_id, "company": company,
+                        "city": city_key, "title": title,
+                        "location": city_d, "url": href,
+                        "source": "playwright_dom",
+                        "posted_date": "", "fetched_at": now_iso(),
+                        "is_active": True,
+                    })
+                if captured: break
+        except Exception:
+            pass
+
+    return captured
+
+async def fetch_playwright(seen):
+    """Run Playwright for all companies. Returns list of jobs."""
+    all_jobs = []
+    print(f"  Launching Chromium browser…")
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ]
+        )
+        context = await browser.new_context(
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"),
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+            ignore_https_errors=True,
+        )
+        # Reuse one page for all requests
+        page = await context.new_page()
+
+        for row in PLAYWRIGHT_COMPANIES:
+            hyd_id, blr_id, company = row[0], row[1], row[2]
+            url_hyd, url_blr        = row[3], row[4]
+
+            city_map = []
+            if hyd_id and url_hyd:
+                city_map.append((hyd_id, "HYD", url_hyd))
+            if blr_id and url_blr:
+                city_map.append((blr_id, "BLR", url_blr))
+
+            for gcc_id, city_key, url in city_map:
+                jobs = await scrape_one_page(
+                    page, url, company, gcc_id, city_key, seen)
+                if jobs:
+                    all_jobs.extend(jobs)
+                    print(f"  ✓ {company} {city_key}: {len(jobs)} jobs")
+                else:
+                    print(f"  ○ {company} {city_key}: 0 (no feed intercepted)")
+                await asyncio.sleep(1.5)   # polite delay between pages
+
+        await browser.close()
+    return all_jobs
+
 
 # ═══════════════════════════════════════════════════════════════
-#  SOURCE 2 — GREENHOUSE DIRECT
+#  SOURCE 2 — GREENHOUSE DIRECT (free, works perfectly)
 # ═══════════════════════════════════════════════════════════════
 GH_BASE = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
+
+GREENHOUSE_COMPANIES = [
+    (14, 144,"Palo Alto Networks","paloaltonetworks"),
+    (15, 145,"CrowdStrike",       "crowdstrike"),
+    (12, 141,"Salesforce",        "salesforce"),
+    (57, 143,"ServiceNow",        "servicenow"),
+    (48,None,"Sonatype",          "sonatype"),
+    (46,None,"BeyondTrust",       "beyondtrust"),
+    (47,None,"Secureworks",       "secureworks"),
+    ( 9,None,"SailPoint",         "sailpoint"),
+    ( 8,None,"Ping Identity",     "pingidentity"),
+    (61,None,"Fortinet",          "fortinet"),
+]
 
 def fetch_greenhouse(hyd_id, blr_id, company, token, seen):
     jobs = []
@@ -454,12 +573,12 @@ def fetch_greenhouse(hyd_id, blr_id, company, token, seen):
         if r.status_code != 200: return jobs
         for job in r.json().get("jobs",[]):
             title = job.get("title","")
-            if not is_security_role(title): continue
+            if not is_security(title): continue
             loc = (job.get("location",{}).get("name","") + " " +
-                   " ".join(o.get("name","")
-                            for o in job.get("offices",[]))).lower()
+                   " ".join(o.get("name","") for o in
+                   job.get("offices",[]))).lower()
             pairs = []
-            if "hyderabad" in loc and hyd_id:
+            if ("hyderabad" in loc or "hyd" in loc) and hyd_id:
                 pairs.append((hyd_id,"HYD","Hyderabad"))
             if any(x in loc for x in
                    ["bengaluru","bangalore","blr"]) and blr_id:
@@ -468,24 +587,34 @@ def fetch_greenhouse(hyd_id, blr_id, company, token, seen):
                 if "india" in loc or not loc.strip():
                     if hyd_id: pairs.append((hyd_id,"HYD","Hyderabad"))
                     if blr_id: pairs.append((blr_id,"BLR","Bengaluru"))
-            for gcc_id, city_key, city_d in pairs:
-                jid = f"gh_{token}_{city_key}_{job.get('id','')}"
+            for gcc_id, ck, cd in pairs:
+                jid = f"gh_{token}_{ck}_{job.get('id','')}"
                 if jid in seen: continue
                 seen.add(jid)
-                jobs.append(make_job(
-                    gcc_id, company, city_key, city_d, title,
-                    job.get("absolute_url",""), job.get("updated_at",""),
-                    "greenhouse", jid))
+                jobs.append({
+                    "id": jid,"gcc_id": gcc_id,"company": company,
+                    "city": ck,"title": title,"location": cd,
+                    "url": job.get("absolute_url",""),
+                    "source": "greenhouse",
+                    "posted_date": job.get("updated_at",""),
+                    "fetched_at": now_iso(),"is_active": True,
+                })
         time.sleep(0.3)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"    GH error {company}: {e}")
     return jobs
 
 
 # ═══════════════════════════════════════════════════════════════
-#  SOURCE 3 — LEVER DIRECT
+#  SOURCE 3 — LEVER DIRECT (free, works perfectly)
 # ═══════════════════════════════════════════════════════════════
 LV_BASE = "https://api.lever.co/v0/postings/{slug}?mode=json"
+
+LEVER_COMPANIES = [
+    (68,None,"DAZN",              "dazn"),
+    (69,None,"Pegasystems",       "pega"),
+    (None,160,"Zebra Technologies","zebra"),
+]
 
 def fetch_lever(hyd_id, blr_id, company, slug, seen):
     jobs = []
@@ -496,10 +625,10 @@ def fetch_lever(hyd_id, blr_id, company, slug, seen):
         if not isinstance(data, list): return jobs
         for job in data:
             title = job.get("text","")
-            if not is_security_role(title): continue
+            if not is_security(title): continue
             loc = job.get("categories",{}).get("location","").lower()
             pairs = []
-            if "hyderabad" in loc and hyd_id:
+            if ("hyderabad" in loc or "hyd" in loc) and hyd_id:
                 pairs.append((hyd_id,"HYD","Hyderabad"))
             if any(x in loc for x in
                    ["bengaluru","bangalore","blr"]) and blr_id:
@@ -508,62 +637,259 @@ def fetch_lever(hyd_id, blr_id, company, slug, seen):
                 if "india" in loc or not loc:
                     if hyd_id: pairs.append((hyd_id,"HYD","Hyderabad"))
                     if blr_id: pairs.append((blr_id,"BLR","Bengaluru"))
-            for gcc_id, city_key, city_d in pairs:
-                jid = f"lv_{slug}_{city_key}_{job.get('id','')}"
+            for gcc_id, ck, cd in pairs:
+                ts  = job.get("createdAt",0)
+                jid = f"lv_{slug}_{ck}_{job.get('id','')}"
                 if jid in seen: continue
                 seen.add(jid)
-                ts = job.get("createdAt",0)
-                posted = (datetime.fromtimestamp(ts/1000, tz=timezone.utc)
-                          .isoformat() if ts else "")
-                jobs.append(make_job(
-                    gcc_id, company, city_key, city_d, title,
-                    job.get("hostedUrl",""), posted, "lever", jid))
+                jobs.append({
+                    "id": jid,"gcc_id": gcc_id,"company": company,
+                    "city": ck,"title": title,"location": cd,
+                    "url": job.get("hostedUrl",""),
+                    "source": "lever",
+                    "posted_date": (
+                        datetime.fromtimestamp(ts/1000,tz=timezone.utc)
+                        .isoformat() if ts else ""),
+                    "fetched_at": now_iso(),"is_active": True,
+                })
         time.sleep(0.3)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"    Lever error {company}: {e}")
     return jobs
 
 
 # ═══════════════════════════════════════════════════════════════
-#  SOURCE 4 — JSEARCH FALLBACK (8 calls)
+#  SOURCE 4 — JSEARCH  (city-wide + targeted)
 # ═══════════════════════════════════════════════════════════════
-def fetch_jsearch_all(seen):
+CITY_WIDE_QUERIES = [
+    "information security manager OR lead OR director OR engineer OR analyst",
+    "cybersecurity manager OR lead OR director OR head OR architect OR VP",
+    "identity access management IAM manager OR lead OR director OR architect",
+    "PING azure security GCP endpoint security manager OR lead OR engineer",
+]
+
+TARGETED_COMPANIES_JS = [
+    ("Wells Fargo",[7,188]),("HSBC",[5,130]),("Barclays",[39,132]),
+    ("Goldman Sachs",[6,104]),("Morgan Stanley",[None,105]),
+    ("Deutsche Bank",[38,131]),("Citi",[40,134]),("JP Morgan",[4,106]),
+]
+
+GCC_LOOKUP = {
+    ("wells fargo","HYD"):7,   ("wells fargo","BLR"):188,
+    ("hsbc","HYD"):5,          ("hsbc","BLR"):130,
+    ("barclays","HYD"):39,     ("barclays","BLR"):132,
+    ("goldman","HYD"):6,       ("goldman","BLR"):104,
+    ("morgan stanley","HYD"):None,("morgan stanley","BLR"):105,
+    ("deutsche bank","HYD"):38,("deutsche bank","BLR"):131,
+    ("citi","HYD"):40,         ("citi","BLR"):134,
+    ("jpmorgan","HYD"):4,      ("jpmorgan","BLR"):106,
+    ("jp morgan","HYD"):4,     ("jp morgan","BLR"):106,
+    ("microsoft","HYD"):1,     ("microsoft","BLR"):101,
+    ("google","HYD"):2,        ("google","BLR"):102,
+    ("amazon","HYD"):3,        ("amazon","BLR"):103,
+    ("ibm","HYD"):13,          ("ibm","BLR"):110,
+    ("oracle","HYD"):16,       ("oracle","BLR"):112,
+    ("sap","HYD"):17,          ("sap","BLR"):111,
+    ("cisco","HYD"):18,        ("cisco","BLR"):113,
+    ("accenture","HYD"):19,    ("accenture","BLR"):114,
+    ("deloitte","HYD"):20,     ("deloitte","BLR"):115,
+    ("pwc","HYD"):21,          ("pwc","BLR"):116,
+    ("pricewaterhouse","HYD"):21,("pricewaterhouse","BLR"):116,
+    ("ernst","HYD"):22,        ("ernst","BLR"):117,
+    ("kpmg","HYD"):23,         ("kpmg","BLR"):118,
+    ("walmart","HYD"):36,      ("walmart","BLR"):107,
+    ("target","HYD"):37,       ("target","BLR"):108,
+    ("flipkart","HYD"):None,   ("flipkart","BLR"):109,
+    ("standard chartered","HYD"):None,("standard chartered","BLR"):133,
+    ("ubs","HYD"):None,        ("ubs","BLR"):135,
+    ("blackrock","HYD"):None,  ("blackrock","BLR"):136,
+    ("fidelity","HYD"):None,   ("fidelity","BLR"):137,
+    ("visa","HYD"):None,       ("visa","BLR"):138,
+    ("mastercard","HYD"):None, ("mastercard","BLR"):139,
+    ("paypal","HYD"):None,     ("paypal","BLR"):140,
+    ("state street","HYD"):51, ("state street","BLR"):155,
+    ("synchrony","HYD"):75,    ("synchrony","BLR"):189,
+    ("allstate","HYD"):76,     ("allstate","BLR"):None,
+    ("northern trust","HYD"):77,("northern trust","BLR"):175,
+    ("schwab","HYD"):78,       ("schwab","BLR"):None,
+    ("broadridge","HYD"):73,   ("broadridge","BLR"):173,
+    ("natwest","HYD"):74,      ("natwest","BLR"):174,
+    ("principal","HYD"):93,    ("principal","BLR"):None,
+    ("nationwide","HYD"):94,   ("nationwide","BLR"):None,
+    ("humana","HYD"):95,       ("humana","BLR"):None,
+    ("elevance","HYD"):96,     ("elevance","BLR"):190,
+    ("anthem","HYD"):96,       ("anthem","BLR"):190,
+    ("metlife","HYD"):10,      ("metlife","BLR"):None,
+    ("vanguard","HYD"):11,     ("vanguard","BLR"):None,
+    ("adobe","HYD"):58,        ("adobe","BLR"):142,
+    ("novartis","HYD"):30,     ("novartis","BLR"):127,
+    ("astrazeneca","HYD"):31,  ("astrazeneca","BLR"):126,
+    ("sanofi","HYD"):32,       ("sanofi","BLR"):159,
+    ("eli lilly","HYD"):33,    ("eli lilly","BLR"):None,
+    ("lilly","HYD"):33,        ("lilly","BLR"):None,
+    ("roche","HYD"):56,        ("roche","BLR"):None,
+    ("amgen","HYD"):72,        ("amgen","BLR"):172,
+    ("thermo fisher","HYD"):79,("thermo fisher","BLR"):176,
+    ("danaher","HYD"):80,      ("danaher","BLR"):177,
+    ("bosch","HYD"):52,        ("bosch","BLR"):119,
+    ("siemens","HYD"):None,    ("siemens","BLR"):120,
+    ("abb","HYD"):42,          ("abb","BLR"):121,
+    ("honeywell","HYD"):43,    ("honeywell","BLR"):122,
+    ("boeing","HYD"):None,     ("boeing","BLR"):124,
+    ("airbus","HYD"):None,     ("airbus","BLR"):125,
+    ("shell","HYD"):41,        ("shell","BLR"):151,
+    ("qualcomm","HYD"):53,     ("qualcomm","BLR"):None,
+    ("micron","HYD"):64,       ("micron","BLR"):None,
+    ("nvidia","HYD"):59,       ("nvidia","BLR"):None,
+    ("intel","HYD"):None,      ("intel","BLR"):148,
+    ("texas instruments","HYD"):None,("texas instruments","BLR"):147,
+    ("synopsys","HYD"):87,     ("synopsys","BLR"):183,
+    ("cadence","HYD"):88,      ("cadence","BLR"):184,
+    ("nxp","HYD"):89,          ("nxp","BLR"):185,
+    ("infineon","HYD"):90,     ("infineon","BLR"):186,
+    ("lam research","HYD"):85, ("lam research","BLR"):181,
+    ("applied materials","HYD"):86,("applied materials","BLR"):182,
+    ("at&t","HYD"):71,         ("at&t","BLR"):171,
+    ("palo alto","HYD"):14,    ("palo alto","BLR"):144,
+    ("crowdstrike","HYD"):15,  ("crowdstrike","BLR"):145,
+    ("vmware","HYD"):62,       ("vmware","BLR"):146,
+    ("broadcom","HYD"):62,     ("broadcom","BLR"):146,
+    ("servicenow","HYD"):57,   ("servicenow","BLR"):143,
+    ("sailpoint","HYD"):9,     ("sailpoint","BLR"):None,
+    ("ping identity","HYD"):8, ("ping identity","BLR"):None,
+    ("fortinet","HYD"):61,     ("fortinet","BLR"):None,
+    ("beyondtrust","HYD"):46,  ("beyondtrust","BLR"):None,
+    ("secureworks","HYD"):47,  ("secureworks","BLR"):None,
+    ("genpact","HYD"):83,      ("genpact","BLR"):180,
+    ("mckinsey","HYD"):None,   ("mckinsey","BLR"):152,
+    ("bcg","HYD"):None,        ("bcg","BLR"):153,
+    ("zurich","HYD"):91,       ("zurich","BLR"):187,
+    ("manulife","HYD"):92,     ("manulife","BLR"):None,
+    ("fiserv","HYD"):None,     ("fiserv","BLR"):154,
+    ("caterpillar","HYD"):None,("caterpillar","BLR"):156,
+    ("volvo","HYD"):None,      ("volvo","BLR"):157,
+    ("rockwell","HYD"):None,   ("rockwell","BLR"):158,
+    ("aptiv","HYD"):97,        ("aptiv","BLR"):178,
+    ("unilever","HYD"):None,   ("unilever","BLR"):149,
+    ("procter","HYD"):None,    ("procter","BLR"):150,
+    ("ge ","HYD"):None,        ("ge ","BLR"):123,
+    ("general electric","HYD"):None,("general electric","BLR"):123,
+}
+
+def match_company(employer, city_key):
+    if not employer: return None
+    en = employer.lower()
+    best, best_len = None, 0
+    for (frag, ck), gcc_id in GCC_LOOKUP.items():
+        if ck != city_key or not gcc_id: continue
+        if frag in en and len(frag) > best_len:
+            best, best_len = gcc_id, len(frag)
+    return best
+
+def jsearch_call(query, headers, seen, city_key):
+    jobs = []
+    try:
+        r = requests.get(JSEARCH_URL, headers=headers,
+                         params={"query":query,"num_pages":"1",
+                                 "date_posted":"month",
+                                 "employment_types":"FULLTIME"},
+                         timeout=30)
+        r.raise_for_status()
+        results = r.json().get("data",[])
+        matched = 0
+        city_d = "Hyderabad" if city_key=="HYD" else "Bengaluru"
+        for job in results:
+            jid = job.get("job_id","")
+            if not jid or jid in seen: continue
+            gcc_id = match_company(job.get("employer_name",""), city_key)
+            if not gcc_id: continue
+            seen.add(jid)
+            matched += 1
+            jobs.append({
+                "id":jid,"gcc_id":gcc_id,
+                "company":job.get("employer_name",""),
+                "city":city_key,"title":job.get("job_title",""),
+                "location":job.get("job_city",city_d),
+                "url":job.get("job_apply_link",""),
+                "source":"jsearch",
+                "posted_date":job.get("job_posted_at_datetime_utc",""),
+                "fetched_at":now_iso(),"is_active":True,
+            })
+        print(f"    → {len(results)} returned, {matched} matched")
+        time.sleep(0.5)
+    except Exception as e:
+        print(f"    JSearch error: {e}")
+    return jobs
+
+def fetch_jsearch(seen):
     all_jobs = []
-    headers = {"X-RapidAPI-Key": JSEARCH_KEY,
-               "X-RapidAPI-Host": JSEARCH_HOST}
+    headers  = {"X-RapidAPI-Key":JSEARCH_KEY,"X-RapidAPI-Host":JSEARCH_HOST}
     for city in CITIES:
-        print(f"\n  JSearch — {city['name']}")
-        for q in JSEARCH_QUERIES:
+        print(f"\n  City-wide — {city['name']}")
+        for q in CITY_WIDE_QUERIES:
+            print(f"    {q[:55]}…")
+            all_jobs.extend(jsearch_call(
+                f"{q} in {city['jsearch']}", headers, seen, city["key"]))
+        print(f"\n  Targeted BFSI — {city['name']}")
+        for company, _ in TARGETED_COMPANIES_JS:
+            print(f"    {company}…")
+            q = (f"{company} information security OR cybersecurity "
+                 f"OR IAM OR identity access in {city['jsearch']}")
+            all_jobs.extend(jsearch_call(q, headers, seen, city["key"]))
+    return all_jobs
+
+
+# ═══════════════════════════════════════════════════════════════
+#  SOURCE 5 — ADZUNA (different index, parallel to JSearch)
+# ═══════════════════════════════════════════════════════════════
+ADZUNA_QUERIES = [
+    {"what":"information security",
+     "what_or":"manager lead director engineer analyst head specialist"},
+    {"what":"cybersecurity",
+     "what_or":"manager lead director head architect VP engineer"},
+    {"what":"identity access",
+     "what_or":"manager lead director architect engineer IAM analyst"},
+    {"what":"PING azure security GCP endpoint IAM",
+     "what_or":"manager lead director senior engineer architect"},
+]
+
+def fetch_adzuna(seen):
+    all_jobs = []
+    for city in CITIES:
+        print(f"\n  Adzuna — {city['name']}")
+        for q in ADZUNA_QUERIES:
             try:
-                r = requests.get(JSEARCH_URL, headers=headers, params={
-                    "query": f"{q} in {city['jsearch']}",
-                    "num_pages":"1","date_posted":"month",
-                    "employment_types":"FULLTIME",
-                }, timeout=30)
-                r.raise_for_status()
-                results = r.json().get("data",[])
+                r = requests.get(ADZUNA_URL, params={
+                    "app_id":ADZUNA_ID,"app_key":ADZUNA_KEY,
+                    "what":q["what"],"what_or":q["what_or"],
+                    "where":city["adzuna"],"results_per_page":"50",
+                    "sort_by":"date","category":"it-jobs",
+                }, timeout=20)
+                if not r.ok: continue
+                results = r.json().get("results",[])
                 matched = 0
+                city_d = "Hyderabad" if city["key"]=="HYD" else "Bengaluru"
                 for job in results:
-                    jid = job.get("job_id","")
-                    if not jid or jid in seen: continue
-                    gcc_id = match_gcc_jsearch(
-                        job.get("employer_name",""), city["key"])
+                    jid = f"az_{job.get('id','')}"
+                    if jid in seen: continue
+                    employer = job.get("company",{}).get("display_name","")
+                    gcc_id   = match_company(employer, city["key"])
                     if not gcc_id: continue
                     seen.add(jid)
                     matched += 1
-                    all_jobs.append(make_job(
-                        gcc_id, job.get("employer_name",""),
-                        city["key"],
-                        "Hyderabad" if city["key"]=="HYD" else "Bengaluru",
-                        job.get("job_title",""),
-                        job.get("job_apply_link",""),
-                        job.get("job_posted_at_datetime_utc",""),
-                        "jsearch", jid))
-                print(f"    {q[:48]}… → {len(results)} returned, "
-                      f"{matched} matched")
+                    all_jobs.append({
+                        "id":jid,"gcc_id":gcc_id,"company":employer,
+                        "city":city["key"],"title":job.get("title",""),
+                        "location":city_d,"url":job.get("redirect_url",""),
+                        "source":"adzuna",
+                        "posted_date":job.get("created",""),
+                        "fetched_at":now_iso(),"is_active":True,
+                    })
+                print(f"    {q['what'][:40]}… → "
+                      f"{len(results)} returned, {matched} matched")
                 time.sleep(0.4)
             except Exception as e:
-                print(f"    JSearch error: {e}")
+                print(f"    Adzuna error: {e}")
     return all_jobs
 
 
@@ -572,88 +898,89 @@ def fetch_jsearch_all(seen):
 # ═══════════════════════════════════════════════════════════════
 def main():
     print(f"\n{'='*65}")
-    print(f"GCC Multi-Source Fetcher v3 — "
+    print(f"GCC Job Fetcher v5 (Playwright + 4 sources) — "
           f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"Workday: {len(WORKDAY_COMPANIES)} companies  |  "
-          f"Greenhouse: {len(GREENHOUSE_COMPANIES)}  |  "
-          f"Lever: {len(LEVER_COMPANIES)}  |  JSearch: 8 calls")
+    print(f"Playwright: {len(PLAYWRIGHT_COMPANIES)} companies  |  "
+          f"GH: {len(GREENHOUSE_COMPANIES)}  |  "
+          f"Lever: {len(LEVER_COMPANIES)}  |  "
+          f"JSearch+Adzuna: 8+8 calls")
     print(f"{'='*65}\n")
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     sb.table("gcc_jobs").update({"is_active":False}).neq("id","x").execute()
-    print("Marked existing jobs inactive\n")
+    print("Marked existing jobs inactive")
 
     all_jobs = []; seen = set()
 
-    # Source 1 — Workday
+    # 1 — Playwright
+    print(f"\n{'─'*40}")
+    print(f"SOURCE 1 — Playwright ({len(PLAYWRIGHT_COMPANIES)} companies)")
     print(f"{'─'*40}")
-    print(f"SOURCE 1 — Workday ({len(WORKDAY_COMPANIES)} companies)")
-    print(f"{'─'*40}")
-    wd_total = 0
-    for row in WORKDAY_COMPANIES:
-        hyd_id,blr_id,company,base_url = row
-        jobs = fetch_workday(hyd_id,blr_id,company,base_url,seen)
-        if jobs:
-            all_jobs.extend(jobs); wd_total+=len(jobs)
-            print(f"  ✓ {company}: {len(jobs)} jobs")
-        time.sleep(0.5)
-    print(f"  → Total: {wd_total}\n")
+    pw_jobs = asyncio.run(fetch_playwright(seen))
+    all_jobs.extend(pw_jobs)
+    print(f"  → Total: {len(pw_jobs)}")
 
-    # Source 2 — Greenhouse
-    print(f"{'─'*40}")
+    # 2 — Greenhouse
+    print(f"\n{'─'*40}")
     print(f"SOURCE 2 — Greenhouse ({len(GREENHOUSE_COMPANIES)} companies)")
     print(f"{'─'*40}")
     gh_total = 0
     for hyd_id,blr_id,company,token in GREENHOUSE_COMPANIES:
         jobs = fetch_greenhouse(hyd_id,blr_id,company,token,seen)
-        if jobs:
-            all_jobs.extend(jobs); gh_total+=len(jobs)
-            print(f"  ✓ {company}: {len(jobs)} jobs")
-        time.sleep(0.3)
-    print(f"  → Total: {gh_total}\n")
+        all_jobs.extend(jobs); gh_total+=len(jobs)
+        if jobs: print(f"  ✓ {company}: {len(jobs)}")
+    print(f"  → Total: {gh_total}")
 
-    # Source 3 — Lever
-    print(f"{'─'*40}")
+    # 3 — Lever
+    print(f"\n{'─'*40}")
     print(f"SOURCE 3 — Lever ({len(LEVER_COMPANIES)} companies)")
     print(f"{'─'*40}")
     lv_total = 0
     for hyd_id,blr_id,company,slug in LEVER_COMPANIES:
         jobs = fetch_lever(hyd_id,blr_id,company,slug,seen)
-        if jobs:
-            all_jobs.extend(jobs); lv_total+=len(jobs)
-            print(f"  ✓ {company}: {len(jobs)} jobs")
-        time.sleep(0.3)
-    print(f"  → Total: {lv_total}\n")
+        all_jobs.extend(jobs); lv_total+=len(jobs)
+        if jobs: print(f"  ✓ {company}: {len(jobs)}")
+    print(f"  → Total: {lv_total}")
 
-    # Source 4 — JSearch
+    # 4 — JSearch
+    print(f"\n{'─'*40}")
+    print("SOURCE 4 — JSearch (city-wide + targeted)")
     print(f"{'─'*40}")
-    print(f"SOURCE 4 — JSearch (8 API calls)")
-    print(f"{'─'*40}")
-    js_jobs = fetch_jsearch_all(seen)
+    js_jobs = fetch_jsearch(seen)
     all_jobs.extend(js_jobs)
-    print(f"  → Total: {len(js_jobs)}\n")
+    print(f"  → Total: {len(js_jobs)}")
 
-    # Save
+    # 5 — Adzuna
+    print(f"\n{'─'*40}")
+    print("SOURCE 5 — Adzuna")
     print(f"{'─'*40}")
+    az_jobs = fetch_adzuna(seen)
+    all_jobs.extend(az_jobs)
+    print(f"  → Total: {len(az_jobs)}")
+
+    # Save to Supabase
+    print(f"\n{'─'*40}")
     print(f"💾 Saving {len(all_jobs)} jobs to Supabase…")
     if all_jobs:
-        for i in range(0,len(all_jobs),100):
+        for i in range(0, len(all_jobs), 100):
             sb.table("gcc_jobs").upsert(
-                all_jobs[i:i+100],on_conflict="id").execute()
+                all_jobs[i:i+100], on_conflict="id").execute()
+
     companies = len(set(j["gcc_id"] for j in all_jobs))
     sb.table("gcc_fetch_status").insert({
-        "fetched_at":          datetime.now(timezone.utc).isoformat(),
+        "fetched_at":          now_iso(),
         "total_jobs":          len(all_jobs),
         "companies_with_jobs": companies,
     }).execute()
 
     print(f"\n{'='*65}")
     print(f"✅ COMPLETE")
-    print(f"   Workday:    {wd_total}")
-    print(f"   Greenhouse: {gh_total}")
-    print(f"   Lever:      {lv_total}")
-    print(f"   JSearch:    {len(js_jobs)}")
-    print(f"   TOTAL:      {len(all_jobs)} jobs, {companies} companies")
+    print(f"   Playwright:  {len(pw_jobs)}")
+    print(f"   Greenhouse:  {gh_total}")
+    print(f"   Lever:       {lv_total}")
+    print(f"   JSearch:     {len(js_jobs)}")
+    print(f"   Adzuna:      {len(az_jobs)}")
+    print(f"   TOTAL:       {len(all_jobs)} jobs, {companies} companies")
     print(f"{'='*65}\n")
 
 if __name__ == "__main__":
