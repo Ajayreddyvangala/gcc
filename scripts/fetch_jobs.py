@@ -349,29 +349,79 @@ PLAYWRIGHT_COMPANIES = [
 
 # ── JSON patterns Playwright watches for in network responses ─
 WORKDAY_API_PATTERNS = [
-    "/wday/cxs/",        # Workday REST
-    "/jobs?",            # Generic jobs API
-    "/jobPostings",      # Workday response key
-    "api/jobs",          # Generic
-    "careers/search",    # Various ATS
-    "search/jobs",       # iCIMS pattern
-    "/requisitions",     # SuccessFactors
-    "job-search",        # Various
+    # ── Workday ────────────────────────────────────────────────
+    "/wday/cxs/",          # Workday REST API
+    "/jobPostings",        # Workday response key
+    "myworkdayjobs.com",   # Any Workday domain
+    # ── iCIMS (Wells Fargo, T-Mobile, Tesco) ──────────────────
+    "icims.com",           # iCIMS platform domain
+    "jobs/search",         # iCIMS search endpoint
+    "/jobs/search?",       # iCIMS with query params
+    "searchResults",       # iCIMS response key
+    # ── SuccessFactors (HSBC, Standard Chartered) ─────────────
+    "/sf/careers",         # SuccessFactors endpoint
+    "successfactors",      # SAP SuccessFactors
+    "sap.com/careers",     # SAP careers
+    "jobRequisition",      # SuccessFactors response key
+    # ── Taleo (Deutsche Bank, Citi, Oracle) ───────────────────
+    "taleo.net",           # Oracle Taleo
+    "careersection",       # Taleo careers section
+    "/careersection/",     # Taleo URL pattern
+    # ── Greenhouse / Lever (already handled but catch-all) ────
+    "greenhouse.io",       # Greenhouse
+    "lever.co",            # Lever
+    # ── Generic patterns ──────────────────────────────────────
+    "api/jobs",            # Generic jobs API
+    "/api/jobs",           # REST jobs endpoint
+    "careers/search",      # Various ATS
+    "job-search",          # Various ATS
+    "/jobs?",              # Generic with query params
+    "/requisitions",       # SuccessFactors requisitions
+    "jobSearch",           # camelCase variant
+    "JobSearch",           # PascalCase variant
+    "searchjobs",          # lowercase variant
 ]
 
 def looks_like_job_list(data):
-    """Check if parsed JSON looks like a job list response."""
+    """Check if parsed JSON looks like a job list response from any ATS."""
+    # Direct list of jobs
     if isinstance(data, list) and len(data) > 0:
         first = data[0]
         if isinstance(first, dict):
-            return any(k in first for k in
-                       ["title","jobTitle","job_title","name","requisitionId"])
+            return any(k in first for k in [
+                "title","jobTitle","job_title","name","requisitionId",
+                # iCIMS keys
+                "jobtitle","jobId","listingTitle","req_title",
+                # SuccessFactors keys
+                "jobRequisitionId","externalJobTitle","jobTitle",
+                # Taleo keys
+                "jobNumber","jobPosition",
+                # Generic
+                "position","opening","vacancy",
+            ])
     if isinstance(data, dict):
-        for key in ["jobPostings","jobs","results","value","items",
-                    "data","postings","requisitions","positions"]:
+        # Standard keys
+        for key in [
+            # Common
+            "jobPostings","jobs","results","value","items",
+            "data","postings","requisitions","positions",
+            # iCIMS specific
+            "searchResults","jobListings","listings",
+            # SuccessFactors specific
+            "d","odata","jobRequisition","results",
+            # Taleo specific
+            "requisitionList","joblist",
+            # Generic
+            "vacancies","openings","careers","opportunities",
+        ]:
             val = data.get(key)
             if isinstance(val, list) and len(val) > 0:
                 return True
+        # Check total count fields (sign of job search response)
+        if any(k in data for k in
+               ["totalCount","total","count","totalResults",
+                "totalPositions","__count"]):
+            return True
     return False
 
 def extract_jobs_from_json(data, company, gcc_id, city_key):
@@ -379,28 +429,58 @@ def extract_jobs_from_json(data, company, gcc_id, city_key):
     city_d = "Hyderabad" if city_key == "HYD" else "Bengaluru"
     jobs = []
 
-    # Normalise to list
+    # Normalise to list — covers all ATS response formats
     items = []
     if isinstance(data, list):
         items = data
     elif isinstance(data, dict):
-        for key in ["jobPostings","jobs","results","value","items",
-                    "data","postings","requisitions","positions"]:
+        for key in [
+            # Workday
+            "jobPostings","positions",
+            # Generic
+            "jobs","results","value","items","data","postings",
+            # iCIMS
+            "searchResults","jobListings","listings",
+            # SuccessFactors
+            "d","requisitions",
+            # Taleo
+            "requisitionList","joblist",
+            # Other
+            "openings","vacancies","careers","opportunities",
+        ]:
             v = data.get(key)
-            if isinstance(v, list):
+            if isinstance(v, list) and len(v) > 0:
                 items = v; break
+        # SuccessFactors nested: data.d.results
+        if not items:
+            d = data.get("d",{})
+            if isinstance(d, dict):
+                v = d.get("results",[])
+                if isinstance(v, list): items = v
 
     for item in items:
         if not isinstance(item, dict): continue
         title = (item.get("title") or item.get("jobTitle") or
                  item.get("job_title") or item.get("name") or
-                 item.get("externalJobTitle") or "")
+                 item.get("externalJobTitle") or
+                 # iCIMS keys
+                 item.get("jobtitle") or item.get("listingTitle") or
+                 item.get("req_title") or
+                 # SuccessFactors keys
+                 item.get("jobRequisitionId") or
+                 # Taleo keys
+                 item.get("jobPosition") or item.get("jobNumber") or
+                 # Generic
+                 item.get("position") or item.get("opening") or "")
         if not title or not is_security(title): continue
 
         # URL
         url = (item.get("externalPath") or item.get("url") or
                item.get("absolute_url") or item.get("applyUrl") or
-               item.get("jobUrl") or item.get("link") or "")
+               item.get("jobUrl") or item.get("link") or
+               item.get("applyUrl") or item.get("apply_url") or
+               item.get("detailUrl") or item.get("jobDetailUrl") or
+               item.get("redirectUrl") or "")
 
         # Posted date
         posted = (item.get("postedOn") or item.get("posted_at") or
@@ -461,10 +541,51 @@ async def scrape_one_page(page, url, company, gcc_id, city_key,
         try:
             # Common selectors across ATS platforms
             selectors = [
+                # ── Workday ────────────────────────────────
                 "li[data-automation='job-result']",
-                ".job-result-item","[class*='job-title']",
-                "[class*='jobTitle']","[data-job-id]",
-                ".jobs-list li","[class*='JobResult']",
+                "[class*='JobResult']",
+                "[class*='job-card']",
+                # ── iCIMS (Wells Fargo, T-Mobile, Tesco) ──
+                ".iCIMS_JobsTable tr td",
+                "[data-iCIMS-job-id]",
+                ".iCIMS_ListJobTitle a",
+                ".iCIMS_JobTitle",
+                ".iCIMS_Job_Title",
+                "[class*='iCIMS']",
+                ".job-listing-item",
+                ".jobs-search-results-list li",
+                # ── SuccessFactors (HSBC) ──────────────────
+                ".jobResultItem",
+                ".TitleText",
+                "[data-automation='job-result']",
+                ".job-item",
+                "[class*='JobItem']",
+                # ── Taleo (Deutsche Bank, Citi) ────────────
+                ".joblisting",
+                ".requisition-title",
+                "[class*='requisition']",
+                # ── Wells Fargo specific ───────────────────
+                ".job-search-results li",
+                ".wf-job-item",
+                "[data-testid*='job']",
+                "article[class*='job']",
+                # ── Barclays specific ──────────────────────
+                "[data-testid='job-item']",
+                "[class*='SearchResult']",
+                # ── Generic fallbacks ──────────────────────
+                "li[class*='job']",
+                "div[class*='job-card']",
+                "article[class*='job']",
+                "[class*='job-title']",
+                "[class*='jobTitle']",
+                "[data-job-id]",
+                ".jobs-list li",
+                ".job-result-item",
+                "h2[class*='job']",
+                "h3[class*='job']",
+                "a[class*='job-title']",
+                "a[class*='jobTitle']",
+                "td[class*='title'] a",
             ]
             city_d = "Hyderabad" if city_key=="HYD" else "Bengaluru"
             for sel in selectors:
