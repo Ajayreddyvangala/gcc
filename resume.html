@@ -1541,6 +1541,25 @@ async function callClaude(prompt){
     return text;
   } catch(e) {
     console.error('Gemini callClaude error:', e.message, e);
+    // Auto-retry once after 3 seconds if rate limited
+    if (e.message && (e.message.includes('429') || e.message.includes('quota'))) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const r2 = await fetch(GEMINI_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
+          })
+        });
+        const data2 = await r2.json();
+        if (data2.error) throw new Error(data2.error.message);
+        return data2.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      } catch(e2) {
+        throw new Error('Rate limit hit — please wait 60 seconds and try again');
+      }
+    }
     throw new Error(e.message || 'Network error calling Gemini API');
   }
 }
