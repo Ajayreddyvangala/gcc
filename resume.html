@@ -1512,7 +1512,7 @@ function renderTpl3(d){
 
 // ── AI CALLS (Claude API) ─────────────────────────────────────
 const GEMINI_KEY = 'AIzaSyBm_FENxW6UNV7Q4hfjbvT8HVS_3P3f_mY';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
 async function callClaude(prompt){
   // Using Google Gemini 1.5 Flash (free tier)
