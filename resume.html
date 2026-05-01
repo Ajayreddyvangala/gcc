@@ -1765,7 +1765,7 @@ async function testAI(){
   _aiCooldown = true;
   setTimeout(()=>{ _aiCooldown=false; }, 15000); // 15s cooldown
   try {
-    const result = await callClaude('Say exactly: AI is working');
+    const result = await callClaude('', 'summary', {title:'Test',expYrs:'5 years',summary:'Test connection',skills:''});
     el.style.background = '#f0fdf4';
     el.style.border = '1px solid #bbf7d0';
     el.style.color = '#15803d';
