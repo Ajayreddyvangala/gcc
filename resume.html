@@ -1569,6 +1569,9 @@ async function aiImproveSummary(){
   const btn  = document.getElementById('btnAiSummary');
   const out  = document.getElementById('aiSummaryOutput');
   const cur  = v('f_summary');
+  if(btn.dataset.cooldown==='1'){ toast('Please wait a moment…',''); return; }
+  btn.dataset.cooldown='1';
+  setTimeout(()=>{ btn.dataset.cooldown=''; }, 20000);
   btn.disabled = true;
   btn.classList.add('loading');
   btn.textContent = '✦ Generating…';
@@ -1777,24 +1780,31 @@ function showPaymentModal(){
 }
 
 // ── AI CONNECTION TEST ───────────────────────────────────────
+let _aiCooldown = false;
 async function testAI(){
+  if(_aiCooldown){ 
+    toast('Please wait a few seconds before retrying','');
+    return; 
+  }
   const el = document.getElementById('aiTestResult');
   el.style.display = 'block';
   el.style.background = '#f0f9ff';
   el.style.border = '1px solid #bae6fd';
   el.style.color = '#0369a1';
   el.textContent = '⟳ Testing AI connection…';
+  _aiCooldown = true;
+  setTimeout(()=>{ _aiCooldown=false; }, 15000); // 15s cooldown
   try {
     const result = await callClaude('Say exactly: AI is working');
     el.style.background = '#f0fdf4';
     el.style.border = '1px solid #bbf7d0';
     el.style.color = '#15803d';
-    el.textContent = '✅ AI Connected! Response: ' + result.slice(0,80);
+    el.textContent = '✅ AI Connected! ' + result.slice(0,60);
   } catch(e) {
     el.style.background = '#fef2f2';
     el.style.border = '1px solid #fecaca';
     el.style.color = '#991b1b';
-    el.textContent = '❌ AI Error: ' + e.message;
+    el.textContent = '❌ ' + e.message;
   }
 }
 
