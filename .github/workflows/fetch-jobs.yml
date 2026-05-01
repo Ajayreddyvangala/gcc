@@ -2,32 +2,64 @@ name: Fetch GCC Jobs Daily
 
 on:
   schedule:
-    - cron: '30 18 * * *'   # 18:30 UTC = midnight IST every day
-  workflow_dispatch:          # also allows manual run from Actions tab
+    - cron: '30 18 * * *'   # midnight IST
+  workflow_dispatch:
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 60       # allow up to 60 min for Playwright
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Mark all jobs inactive
+        run: |
+          curl -s -X POST \
+            "https://ufoagnygfecqghfpjunx.supabase.co/rest/v1/rpc/mark_jobs_inactive" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -H "Content-Type: application/json" || true
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Run fetch-core (Greenhouse + Lever + JSearch + Adzuna)
+        run: |
+          echo "Starting fetch-core..."
+          curl -s -X POST \
+            https://ufoagnygfecqghfpjunx.supabase.co/functions/v1/fetch-core \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -H "Content-Type: application/json" \
+            --max-time 300
+          echo "fetch-core done"
 
-      - name: Install Python dependencies
-        run: pip install requests supabase playwright
+      - name: Wait between functions
+        run: sleep 10
 
-      - name: Install Playwright Chromium browser
-        run: playwright install chromium --with-deps
+      - name: Run fetch-india (Naukri + Foundit + TimesJobs + Shine)
+        run: |
+          echo "Starting fetch-india..."
+          curl -s -X POST \
+            https://ufoagnygfecqghfpjunx.supabase.co/functions/v1/fetch-india \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -H "Content-Type: application/json" \
+            --max-time 300
+          echo "fetch-india done"
 
-      - name: Run job fetcher
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          JSEARCH_KEY:  ${{ secrets.JSEARCH_KEY }}
-        run: python scripts/fetch_jobs.py
+      - name: Wait between functions
+        run: sleep 10
+
+      - name: Run fetch-scraper (Wells Fargo + HSBC + Barclays + Citi + LinkedIn)
+        run: |
+          echo "Starting fetch-scraper..."
+          curl -s -X POST \
+            https://ufoagnygfecqghfpjunx.supabase.co/functions/v1/fetch-scraper \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -H "Content-Type: application/json" \
+            --max-time 600
+          echo "fetch-scraper done"
+
+      - name: Update fetch status
+        run: |
+          curl -s -X POST \
+            "https://ufoagnygfecqghfpjunx.supabase.co/rest/v1/gcc_fetch_status" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -H "Content-Type: application/json" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb2FnbnlnZmVjcWdoZnBqdW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODYwNDQsImV4cCI6MjA5Mjk2MjA0NH0.PDcSet-10icp7wB9r5IueDVM7ItT7sUg7vG0E-MXMs4" \
+            -d '{"fetched_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","total_jobs":0,"companies_with_jobs":0}'
+          echo "All done!"
